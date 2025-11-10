@@ -46,7 +46,9 @@ public class WebSocketServer {
      * Initialize WebSocket server
      */
     public WebSocketServer(ExternalApiClient apiClient) {
-        this.app = Javalin.create();
+        this.app = Javalin.create(config -> {
+            config.plugins.enableCors(cors -> cors.add(it -> it.anyHost()));
+        });
         this.apiClient = apiClient;
         setupRoutes();
     }
@@ -146,17 +148,16 @@ public class WebSocketServer {
             // Call external API
             ExternalApiClient.WeatherData weatherData = apiClient.fetchWeatherByCity(city);
             
-            // Send response to dashboard using string (already formatted JSON from Gson)
-            String response = gson.toJson(new Object() {
-                public String type = "WEATHER_RESPONSE";
-                public String location = weatherData.location;
-                public double temperature = weatherData.temperature;
-                public String condition = weatherData.condition;
-                public long timestamp = weatherData.timestamp;
-                public String status = "success";
-            });
+            // Send response to dashboard using Map for proper JSON serialization
+            Map<String, Object> response = new LinkedHashMap<>();
+            response.put("type", "WEATHER_RESPONSE");
+            response.put("location", weatherData.location);
+            response.put("temperature", weatherData.temperature);
+            response.put("condition", weatherData.condition);
+            response.put("timestamp", weatherData.timestamp);
+            response.put("status", "success");
             
-            ctx.send(response);
+            ctx.send(gson.toJson(response));
             System.out.println("[ApiGateway] ✓ Weather response sent to dashboard");
             
         } catch (Exception e) {
