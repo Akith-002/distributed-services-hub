@@ -1,7 +1,0 @@
-com\example\fileservice\HubClient.class
-com\example\fileservice\SSLFileClient.class
-com\example\fileservice\SecureFileService.class
-com\example\fileservice\SSLFileServer.class
-com\example\fileservice\FileServiceHandler.class
-com\example\fileservice\security\SSLUtils.class
-com\example\fileservice\security\SSLUtils$1.class
