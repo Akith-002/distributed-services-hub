@@ -1,6 +1,7 @@
+com\example\apigateway\security\SSLClientUtils.class
 com\example\apigateway\HubClient.class
-com\example\apigateway\WebSocketServer$1.class
 com\example\apigateway\ApiGatewayService.class
+com\example\apigateway\security\SSLClientUtils$1.class
 com\example\apigateway\WebSocketServer.class
 com\example\apigateway\ExternalApiClient.class
 com\example\apigateway\ExternalApiClient$WeatherData.class
