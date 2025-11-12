@@ -3,8 +3,31 @@
 ## Evolution from Chat Application to Microservices Architecture
 
 **Date:** November 10, 2025  
+**Last Updated:** November 12, 2025  
 **Project:** Network Programming Group Assignment - 5 Person Team  
-**Current Status:** Existing chat application (WebSocket + SSL + NIO file transfer) ready for refactoring
+**Current Status:** All phases complete - Ready for demonstration
+
+---
+
+## 📖 INDIVIDUAL STARTUP GUIDES
+
+**Each team member has a detailed startup guide:**
+
+- **[MEMBER_1_STARTUP_GUIDE.md](MEMBER_1_STARTUP_GUIDE.md)** - Hub Server (Multithreading, ConcurrentHashMap)
+- **[MEMBER_2_STARTUP_GUIDE.md](MEMBER_2_STARTUP_GUIDE.md)** - API Gateway + Dashboard (HttpURLConnection, React)
+- **[MEMBER_3_STARTUP_GUIDE.md](MEMBER_3_STARTUP_GUIDE.md)** - Secure File Service (JSSE, SSLServerSocket)
+- **[MEMBER_4_STARTUP_GUIDE.md](MEMBER_4_STARTUP_GUIDE.md)** - NIO Log Service (Selector, Non-blocking I/O)
+- **[MEMBER_5_STARTUP_GUIDE.md](MEMBER_5_STARTUP_GUIDE.md)** - RMI Task Service (Remote Method Invocation)
+
+Each guide includes:
+- ✅ Networking concepts explained
+- ✅ Step-by-step startup instructions
+- ✅ Command line demonstration
+- ✅ UI demonstration (Dashboard tabs)
+- ✅ Code walkthroughs
+- ✅ Presentation scripts
+- ✅ Troubleshooting tips
+- ✅ Pre-demo checklists
 
 ---
 
