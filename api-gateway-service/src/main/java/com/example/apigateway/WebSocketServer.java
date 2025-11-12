@@ -150,6 +150,22 @@ public class WebSocketServer {
                     ctx.send(createPongResponse());
                     break;
                     
+                case "listfiles":
+                    handleListFilesCommand(ctx);
+                    break;
+                    
+                case "uploadfile":
+                    handleUploadFileCommand(ctx, json);
+                    break;
+                    
+                case "downloadfile":
+                    handleDownloadFileCommand(ctx, json);
+                    break;
+                    
+                case "deletefile":
+                    handleDeleteFileCommand(ctx, json);
+                    break;
+                    
                 default:
                     ctx.send(createErrorResponse("Unknown command: " + command));
             }
@@ -437,6 +453,163 @@ public class WebSocketServer {
         response.put("type", "PONG");
         response.put("timestamp", System.currentTimeMillis());
         return gson.toJson(response);
+    }
+    
+    /**
+     * Handle listFiles command - list all files from Secure File Service
+     */
+    private void handleListFilesCommand(WsContext ctx) {
+        try {
+            System.out.println("[ApiGateway] Listing files from Secure File Service...");
+            
+            String response = SecureFileClient.listFiles();
+            
+            if (response.startsWith("SUCCESS::")) {
+                // Parse file list - response format is "SUCCESS::\nfile1\nfile2"
+                String fileListStr = response.substring(9); // Remove "SUCCESS::"
+                
+                // Split by newline and filter out empty strings
+                String[] allFiles = fileListStr.split("\n");
+                java.util.List<String> filesList = new java.util.ArrayList<>();
+                for (String file : allFiles) {
+                    if (file != null && !file.trim().isEmpty()) {
+                        filesList.add(file.trim());
+                    }
+                }
+                
+                Map<String, Object> jsonResponse = new LinkedHashMap<>();
+                jsonResponse.put("type", "FILE_LIST");
+                jsonResponse.put("files", filesList);
+                jsonResponse.put("count", filesList.size());
+                jsonResponse.put("timestamp", System.currentTimeMillis());
+                
+                ctx.send(gson.toJson(jsonResponse));
+                System.out.println("[ApiGateway] ✓ Sent file list (" + filesList.size() + " files)");
+            } else if (response.startsWith("ERROR::")) {
+                String error = response.substring(7);
+                ctx.send(createErrorResponse("Failed to list files: " + error));
+            } else {
+                ctx.send(createErrorResponse("Unexpected response from file service"));
+            }
+            
+        } catch (Exception e) {
+            System.err.println("[ApiGateway] Error listing files: " + e.getMessage());
+            e.printStackTrace();
+            ctx.send(createErrorResponse("Failed to list files: " + e.getMessage()));
+        }
+    }
+    
+    /**
+     * Handle uploadFile command - upload file to Secure File Service
+     */
+    private void handleUploadFileCommand(WsContext ctx, JsonObject json) {
+        try {
+            // Frontend sends "fileName" and "fileData"
+            System.out.println("[ApiGateway] Upload request received: " + json.toString());
+            
+            String filename = json.get("fileName").getAsString();
+            String content = json.get("fileData").getAsString();
+            
+            System.out.println("[ApiGateway] Uploading file: " + filename + " (" + content.length() + " bytes)");
+            
+            String response = SecureFileClient.storeFile(filename, content);
+            
+            System.out.println("[ApiGateway] Secure File Service response: " + response);
+            
+            if (response.startsWith("SUCCESS::")) {
+                String message = response.substring(9);
+                
+                Map<String, Object> jsonResponse = new LinkedHashMap<>();
+                jsonResponse.put("type", "FILE_UPLOAD_SUCCESS");
+                jsonResponse.put("fileName", filename);
+                jsonResponse.put("message", message);
+                jsonResponse.put("timestamp", System.currentTimeMillis());
+                
+                String responseJson = gson.toJson(jsonResponse);
+                System.out.println("[ApiGateway] Sending response to frontend: " + responseJson);
+                ctx.send(responseJson);
+                System.out.println("[ApiGateway] ✓ File uploaded successfully");
+            } else if (response.startsWith("ERROR::")) {
+                String error = response.substring(7);
+                System.err.println("[ApiGateway] Upload error: " + error);
+                ctx.send(createErrorResponse("Failed to upload file: " + error));
+            } else {
+                System.err.println("[ApiGateway] Unexpected response: " + response);
+                ctx.send(createErrorResponse("Unexpected response from file service"));
+            }
+            
+        } catch (Exception e) {
+            System.err.println("[ApiGateway] Error uploading file: " + e.getMessage());
+            e.printStackTrace();
+            ctx.send(createErrorResponse("Failed to upload file: " + e.getMessage()));
+        }
+    }
+    
+    /**
+     * Handle downloadFile command - download file from Secure File Service
+     */
+    private void handleDownloadFileCommand(WsContext ctx, JsonObject json) {
+        try {
+            // Frontend sends "fileName"
+            String filename = json.get("fileName").getAsString();
+            
+            System.out.println("[ApiGateway] Downloading file: " + filename);
+            
+            SecureFileClient.FileData fileData = SecureFileClient.retrieveFile(filename);
+            
+            if (fileData.success) {
+                Map<String, Object> jsonResponse = new LinkedHashMap<>();
+                jsonResponse.put("type", "FILE_DOWNLOAD_SUCCESS");
+                jsonResponse.put("fileName", filename);
+                jsonResponse.put("fileData", fileData.content);
+                jsonResponse.put("timestamp", System.currentTimeMillis());
+                
+                ctx.send(gson.toJson(jsonResponse));
+                System.out.println("[ApiGateway] ✓ File downloaded successfully");
+            } else {
+                ctx.send(createErrorResponse("Failed to download file: " + fileData.error));
+            }
+            
+        } catch (Exception e) {
+            System.err.println("[ApiGateway] Error downloading file: " + e.getMessage());
+            ctx.send(createErrorResponse("Failed to download file: " + e.getMessage()));
+        }
+    }
+    
+    /**
+     * Handle deleteFile command - delete file from Secure File Service
+     */
+    private void handleDeleteFileCommand(WsContext ctx, JsonObject json) {
+        try {
+            // Frontend sends "fileName"
+            String filename = json.get("fileName").getAsString();
+            
+            System.out.println("[ApiGateway] Deleting file: " + filename);
+            
+            String response = SecureFileClient.deleteFile(filename);
+            
+            if (response.startsWith("SUCCESS::")) {
+                String message = response.substring(9);
+                
+                Map<String, Object> jsonResponse = new LinkedHashMap<>();
+                jsonResponse.put("type", "FILE_DELETE_SUCCESS");
+                jsonResponse.put("fileName", filename);
+                jsonResponse.put("message", message);
+                jsonResponse.put("timestamp", System.currentTimeMillis());
+                
+                ctx.send(gson.toJson(jsonResponse));
+                System.out.println("[ApiGateway] ✓ File deleted successfully");
+            } else if (response.startsWith("ERROR::")) {
+                String error = response.substring(7);
+                ctx.send(createErrorResponse("Failed to delete file: " + error));
+            } else {
+                ctx.send(createErrorResponse("Unexpected response from file service"));
+            }
+            
+        } catch (Exception e) {
+            System.err.println("[ApiGateway] Error deleting file: " + e.getMessage());
+            ctx.send(createErrorResponse("Failed to delete file: " + e.getMessage()));
+        }
     }
     
     /**
