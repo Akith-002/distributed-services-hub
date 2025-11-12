@@ -1,2 +1,1 @@
-Hello, This is a secure file!
-This content is encrypted over SSL/TLS
+test file

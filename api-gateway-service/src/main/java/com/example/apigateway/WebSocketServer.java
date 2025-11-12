@@ -55,6 +55,10 @@ public class WebSocketServer {
     public WebSocketServer(ExternalApiClient apiClient) {
         this.app = Javalin.create(config -> {
             config.plugins.enableCors(cors -> cors.add(it -> it.anyHost()));
+            // Configure WebSocket timeout to prevent idle disconnections
+            config.jetty.wsFactoryConfig(wsFactory -> {
+                wsFactory.setIdleTimeout(java.time.Duration.ofMinutes(10)); // 10 minutes
+            });
         });
         this.apiClient = apiClient;
         setupRoutes();
@@ -151,7 +155,9 @@ public class WebSocketServer {
                     break;
                     
                 case "ping":
+                    // Heartbeat from client - respond with PONG to keep connection alive
                     ctx.send(createPongResponse());
+                    System.out.println("[WebSocket] Heartbeat received, sent PONG");
                     break;
                     
                 default:
@@ -294,13 +300,27 @@ public class WebSocketServer {
             // Send LIST command
             out.println("LIST");
             
-            // Read response
+            // Read response - first line contains SUCCESS:: or ERROR::
             String response = in.readLine();
-            System.out.println("[ApiGateway] List response: " + response);
+            System.out.println("[ApiGateway] List response (first line): " + response);
             
             if (response != null && response.startsWith("SUCCESS::")) {
                 // Parse the file list
                 String fileListContent = response.substring(9); // Remove "SUCCESS::" prefix
+                
+                // If the file list content is empty on first line, it means files are on next lines
+                // Read remaining lines if any (file service sends files with newlines)
+                StringBuilder fullContent = new StringBuilder(fileListContent);
+                String line;
+                while (in.ready() && (line = in.readLine()) != null && !line.isEmpty()) {
+                    if (fullContent.length() > 0) {
+                        fullContent.append("\n");
+                    }
+                    fullContent.append(line);
+                }
+                
+                fileListContent = fullContent.toString().trim();
+                System.out.println("[ApiGateway] Full file list content: '" + fileListContent + "'");
                 
                 String[] files;
                 if (fileListContent.isEmpty() || fileListContent.equals("No files stored")) {
@@ -311,11 +331,13 @@ public class WebSocketServer {
                     files = new String[lines.length];
                     for (int i = 0; i < lines.length; i++) {
                         // Extract filename from "filename (size bytes)" format
-                        String line = lines[i].trim();
-                        if (line.contains("(")) {
-                            files[i] = line.substring(0, line.lastIndexOf("(")).trim();
-                        } else {
-                            files[i] = line;
+                        String lineText = lines[i].trim();
+                        if (!lineText.isEmpty()) {
+                            if (lineText.contains("(")) {
+                                files[i] = lineText.substring(0, lineText.lastIndexOf("(")).trim();
+                            } else {
+                                files[i] = lineText;
+                            }
                         }
                     }
                 }
@@ -328,7 +350,7 @@ public class WebSocketServer {
                 wsResponse.put("count", files.length);
                 wsResponse.put("timestamp", System.currentTimeMillis());
                 ctx.send(gson.toJson(wsResponse));
-                System.out.println("[ApiGateway] ✓ Listed " + files.length + " files");
+                System.out.println("[ApiGateway] ✓ Listed " + files.length + " files: " + String.join(", ", files));
             } else {
                 socket.close();
                 ctx.send(createErrorResponse("Failed to list files: " + response));
@@ -491,9 +513,9 @@ public class WebSocketServer {
                                 if (connector instanceof AbstractConnector) {
                                     AbstractConnector abstractConnector = (AbstractConnector) connector;
                                     long currentTimeout = abstractConnector.getIdleTimeout();
-                                    abstractConnector.setIdleTimeout(300000); // 5 minutes (300 seconds)
+                                    abstractConnector.setIdleTimeout(600000); // 10 minutes (600 seconds)
                                     System.out.println("[WebSocketServer] ✓ Jetty idle timeout configured");
-                                    System.out.println("[WebSocketServer]   Before: " + currentTimeout + "ms, After: 300000ms");
+                                    System.out.println("[WebSocketServer]   Before: " + currentTimeout + "ms, After: 600000ms");
                                 }
                             }
                         }
