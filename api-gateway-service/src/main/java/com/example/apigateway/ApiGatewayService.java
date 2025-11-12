@@ -28,6 +28,7 @@ public class ApiGatewayService {
     private static HubClient hubClient;
     private static WebSocketServer wsServer;
     private static ExternalApiClient apiClient;
+    private static HubCommandListener commandListener;
     private static volatile boolean running = false;
     
     public static void main(String[] args) {
@@ -61,6 +62,13 @@ public class ApiGatewayService {
     }
     
     /**
+     * Get command listener instance
+     */
+    public static HubCommandListener getCommandListener() {
+        return commandListener;
+    }
+    
+    /**
      * Startup sequence
      */
     private static void startup() throws Exception {
@@ -87,8 +95,15 @@ public class ApiGatewayService {
             System.out.println("[STARTUP] ✓ Connected to Hub successfully");
             System.out.println();
             
-            // Step 3: Start WebSocket Server
-            System.out.println("[STARTUP] Step 3: Starting WebSocket Server...");
+            // Step 3: Start Hub Command Listener (PHASE 3 NEW - Message Broker)
+            System.out.println("[STARTUP] Step 3: Starting Hub Command Listener...");
+            commandListener = new HubCommandListener(hubClient, apiClient);
+            commandListener.start();
+            System.out.println("[STARTUP] ✓ Hub Command Listener started successfully");
+            System.out.println();
+            
+            // Step 4: Start WebSocket Server
+            System.out.println("[STARTUP] Step 4: Starting WebSocket Server...");
             wsServer = new WebSocketServer(apiClient);
             wsServer.start();
             System.out.println("[STARTUP] ✓ WebSocket Server started successfully");
@@ -125,6 +140,7 @@ public class ApiGatewayService {
         System.out.println("==============================================================================");
         System.out.println();
         System.out.println("✓ Hub Registration: SUCCESS");
+        System.out.println("✓ Hub Command Listener: RUNNING on port 9011 (Message Broker Integration)");
         System.out.println("✓ WebSocket Server: RUNNING on port 9001");
         System.out.println("✓ External API Client: READY");
         System.out.println();
@@ -132,6 +148,11 @@ public class ApiGatewayService {
         System.out.println("  • fetchWeather <city>: Get weather data from external API using HttpURLConnection");
         System.out.println("  • getServiceStatus: Get API Gateway service status");
         System.out.println("  • ping: Keep-alive check");
+        System.out.println();
+        System.out.println("Message Broker Integration (PHASE 3):");
+        System.out.println("  • Dashboard (WebSocket) → Hub → HubCommandListener (TCP:9011)");
+        System.out.println("  • Commands routed from Hub to API Gateway for processing");
+        System.out.println("  • Results sent back through Hub to Dashboard");
         System.out.println();
         System.out.println("Connected to Hub - heartbeats sent every 10 seconds");
         System.out.println("Waiting for dashboard connections on ws://localhost:9001/api");
@@ -171,6 +192,13 @@ public class ApiGatewayService {
                 System.out.println("[Shutdown] Stopping WebSocket server...");
                 wsServer.stop();
                 System.out.println("[Shutdown] ✓ WebSocket server stopped");
+            }
+            
+            // Shutdown Hub Command Listener
+            if (commandListener != null && commandListener.isRunning()) {
+                System.out.println("[Shutdown] Stopping Hub Command Listener...");
+                commandListener.shutdown();
+                System.out.println("[Shutdown] ✓ Hub Command Listener stopped");
             }
             
             // Disconnect from Hub

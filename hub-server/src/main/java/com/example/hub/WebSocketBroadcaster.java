@@ -50,7 +50,33 @@ public class WebSocketBroadcaster {
             @SuppressWarnings("unchecked")
             Map<String, Object> msg = gson.fromJson(message, Map.class);
             String type = (String) msg.get("type");
+            String commandFor = (String) msg.get("command_for");
 
+            // Handle PING heartbeat from dashboard
+            if ("PING".equals(type)) {
+                ctx.send(gson.toJson(Collections.singletonMap("type", "PONG")));
+                return;
+            }
+
+            // Handle Dashboard connection message
+            if ("DASHBOARD_CONNECT".equals(type)) {
+                System.out.println("[WEBSOCKET] Dashboard connected: " + message);
+                return;
+            }
+
+            // Handle command routing from Dashboard to Service
+            // Message format: {"command_for": "SERVICE_NAME", "payload": "..."}
+            if (commandFor != null) {
+                System.out.println("[WEBSOCKET] Dashboard sending command to service: " + commandFor);
+                if (commandRouter != null) {
+                    commandRouter.routeCommand(message);
+                } else {
+                    System.err.println("[WEBSOCKET] CommandRouter not initialized");
+                }
+                return;
+            }
+
+            // Handle COMMAND type messages (alternative format)
             if ("COMMAND".equals(type)) {
                 // Dashboard is sending a command to a service
                 if (commandRouter != null) {
@@ -61,8 +87,8 @@ public class WebSocketBroadcaster {
             } else if ("FETCH_SERVICES".equals(type)) {
                 // Dashboard requesting current service list
                 System.out.println("[WEBSOCKET] Dashboard requested service list");
-            } else {
-                System.out.println("[WEBSOCKET] Received message from dashboard: " + message);
+            } else if (type != null) {
+                System.out.println("[WEBSOCKET] Received message from dashboard type=" + type);
             }
         } catch (Exception e) {
             System.err.println("[WEBSOCKET] Error parsing dashboard message: " + e.getMessage());

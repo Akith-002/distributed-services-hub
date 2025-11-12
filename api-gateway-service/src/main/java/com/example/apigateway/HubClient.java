@@ -14,17 +14,22 @@ import java.util.concurrent.TimeUnit;
  * - Send periodic heartbeat messages
  * - Gracefully deregister on shutdown
  * 
+ * PHASE 3 NEW: Message Broker Integration
+ * - Registers both WebSocket port (9001) and Command Listener port (9011)
+ * - Hub uses command listener port to route commands for message broker pattern
+ * 
  * Protocol:
- * - REGISTER::ApiGateway::localhost::9001
+ * - REGISTER::ApiGateway::localhost::9001::9011 (PHASE 3: includes command listener port)
  * - HEARTBEAT::ApiGateway
  * - DEREGISTER::ApiGateway
  */
 public class HubClient {
-    private static final String HUB_HOST = "localhost";
+    private static final String HUB_HOST = "127.0.0.1";
     private static final int HUB_PORT = 7070;
     private static final String SERVICE_NAME = "ApiGateway";
-    private static final String SERVICE_HOST = "localhost";
+    private static final String SERVICE_HOST = "127.0.0.1";
     private static final int SERVICE_PORT = 9001;
+    private static final int COMMAND_LISTENER_PORT = 9011; // PHASE 3 NEW - Message broker port
     private static final long HEARTBEAT_INTERVAL = 10; // seconds
     
     private Socket socket;
@@ -74,10 +79,13 @@ public class HubClient {
             return;
         }
         
-        String registerMsg = String.format("REGISTER::%s::%s::%d", 
-            SERVICE_NAME, SERVICE_HOST, SERVICE_PORT);
+        // PHASE 3 NEW: Register with command listener port for message broker
+        String registerMsg = String.format("REGISTER::%s::%s::%d::%d", 
+            SERVICE_NAME, SERVICE_HOST, SERVICE_PORT, COMMAND_LISTENER_PORT);
         
         System.out.println("[HubClient] Sending: " + registerMsg);
+        System.out.println("[HubClient] Service registered with WebSocket port " + SERVICE_PORT + 
+                         " and Command Listener port " + COMMAND_LISTENER_PORT);
         out.println(registerMsg);
         out.flush();
         

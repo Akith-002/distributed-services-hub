@@ -134,9 +134,14 @@ public class ServiceRegistryHandler implements Runnable {
 
     /**
      * Handle REGISTER message
-     * Format: REGISTER::ServiceName::Host::Port
+     * Format: REGISTER::ServiceName::Host::Port or REGISTER::ServiceName::Host::Port::CommandPort
      */
     private void handleRegister(String incomingServiceName, String[] parts, PrintWriter writer) {
+        System.out.println("[HANDLER] DEBUG - Received REGISTER message");
+        System.out.println("[HANDLER] DEBUG - Message parts: " + java.util.Arrays.toString(parts));
+        System.out.println("[HANDLER] DEBUG - incomingServiceName: '" + incomingServiceName + "' (length=" + incomingServiceName.length() + ")");
+        System.out.println("[HANDLER] DEBUG - incomingServiceName bytes: " + java.util.Arrays.toString(incomingServiceName.getBytes()));
+        
         if (parts.length < 4) {
             sendError(writer, "REGISTER requires: REGISTER::ServiceName::Host::Port");
             return;
@@ -153,6 +158,7 @@ public class ServiceRegistryHandler implements Runnable {
         }
 
         // Register the service
+        System.out.println("[HANDLER] DEBUG - Registering service: '" + incomingServiceName + "' with host=" + host + ", port=" + port);
         boolean success = registry.register(incomingServiceName, host, port);
 
         if (success) {
