@@ -1,3 +1,4 @@
+com\example\taskservice\CommandListener.class
 com\example\taskservice\client\TaskClient.class
 com\example\taskservice\HubClient.class
 com\example\taskservice\TaskService.class

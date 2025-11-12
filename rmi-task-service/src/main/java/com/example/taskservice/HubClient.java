@@ -11,7 +11,8 @@ public class HubClient {
     private static final String HUB_HOST = "localhost";
     private static final int HUB_PORT = 7070;
     private static final String SERVICE_NAME = "RMI_SERVICE";
-    private static final String SERVICE_INFO = "rmi://localhost:1099/TaskService";
+    private static final String SERVICE_HOST = "localhost";
+    private static final int SERVICE_PORT = 1099;
     
     private ScheduledExecutorService heartbeatScheduler;
     private Socket registrationSocket;
@@ -19,13 +20,15 @@ public class HubClient {
 
     /**
      * Register service with Hub
+     * Format: REGISTER::ServiceName::Host::Port
      */
     public void register() {
         try {
             registrationSocket = new Socket(HUB_HOST, HUB_PORT);
             out = new PrintWriter(registrationSocket.getOutputStream(), true);
             
-            String registerMsg = "REGISTER::" + SERVICE_NAME + "::" + SERVICE_INFO;
+            // Correct format: REGISTER::ServiceName::Host::Port
+            String registerMsg = "REGISTER::" + SERVICE_NAME + "::" + SERVICE_HOST + "::" + SERVICE_PORT;
             out.println(registerMsg);
             
             System.out.println("[HUB_CLIENT] Registered with Hub: " + registerMsg);
