@@ -40,6 +40,8 @@ public class HubServer {
     private static ServiceRegistryServer tcpServer;
     private static HeartbeatMonitor heartbeatMonitor;
     private static WebSocketBroadcaster broadcaster;
+    private static CommandRouter commandRouter;
+    private static ResultAggregator resultAggregator;
     private static Javalin app;
 
     public static void main(String[] args) {
@@ -47,7 +49,15 @@ public class HubServer {
             // Initialize components
             registry = new ServiceRegistry();
             broadcaster = new WebSocketBroadcaster();
-            tcpServer = new ServiceRegistryServer(TCP_PORT, registry, broadcaster, THREAD_POOL_SIZE);
+            commandRouter = new CommandRouter(registry);
+            resultAggregator = new ResultAggregator(broadcaster);
+            
+            // Link broadcaster with routers
+            broadcaster.setCommandRouter(commandRouter);
+            broadcaster.setResultAggregator(resultAggregator);
+            
+            tcpServer = new ServiceRegistryServer(TCP_PORT, registry, broadcaster, 
+                                                  commandRouter, resultAggregator, THREAD_POOL_SIZE);
             heartbeatMonitor = new HeartbeatMonitor(registry);
 
             // Listen to registry changes and broadcast them
@@ -175,14 +185,27 @@ public class HubServer {
      */
     private static void printStartupInfo() {
         System.out.println("\n" + "=".repeat(70));
-        System.out.println("  DISTRIBUTED SERVICES HUB - CENTRAL REGISTRY");
+        System.out.println("  DISTRIBUTED SERVICES HUB - CENTRAL MESSAGE BROKER");
         System.out.println("  Member 1 - Multithreading & Concurrency Implementation");
         System.out.println("=".repeat(70));
         System.out.println();
-        System.out.println("Core Concepts:");
+        System.out.println("Core Architecture: MESSAGE BROKER PATTERN");
+        System.out.println();
+        System.out.println("  Dashboard");
+        System.out.println("     ↓ (WebSocket - Commands)");
+        System.out.println("  [HUB - Message Broker]");
+        System.out.println("     ├─ Command Router (Dashboard → Services)");
+        System.out.println("     ├─ Result Aggregator (Services → Dashboard)");
+        System.out.println("     ├─ Service Registry (Multithreading, Concurrency)");
+        System.out.println("     └─ Heartbeat Monitor (ScheduledExecutorService)");
+        System.out.println("     ↓ (TCP - Routed Commands & Results)");
+        System.out.println("  Services (API Gateway, JSSE, NIO, RMI)");
+        System.out.println();
+        System.out.println("Core Concepts Demonstrated:");
         System.out.println("  ✓ Multithreading: Thread-per-client model with ExecutorService");
-        System.out.println("  ✓ Concurrency: ConcurrentHashMap for thread-safe service registry");
+        System.out.println("  ✓ Concurrency: ConcurrentHashMap for thread-safe registry");
         System.out.println("  ✓ Scheduled Tasks: ScheduledExecutorService for heartbeat monitoring");
+        System.out.println("  ✓ Message Broker: Command routing and result aggregation");
         System.out.println("  ✓ WebSocket: Real-time updates to React Dashboard");
         System.out.println();
         System.out.println("Listening Ports:");
@@ -191,11 +214,22 @@ public class HubServer {
         System.out.println("  • Status API: http://localhost:" + HTTP_PORT + "/hub-status");
         System.out.println("  • Services API: http://localhost:" + HTTP_PORT + "/services");
         System.out.println();
-        System.out.println("Service Protocol:");
+        System.out.println("Service Registration Protocol:");
         System.out.println("  REGISTER::ServiceName::Host::Port");
         System.out.println("  HEARTBEAT::ServiceName");
         System.out.println("  DEREGISTER::ServiceName");
-        System.out.println("  FETCH_SERVICES");
+        System.out.println();
+        System.out.println("Message Broker - Command Flow:");
+        System.out.println("  Dashboard → Hub (WebSocket):");
+        System.out.println("    {\"command_for\": \"SERVICE_NAME\", \"payload\": \"...\"}");
+        System.out.println("  Hub → Service (TCP):");
+        System.out.println("    <payload>");
+        System.out.println();
+        System.out.println("Message Broker - Result Flow:");
+        System.out.println("  Service → Hub (TCP):");
+        System.out.println("    {\"result_from\": \"SERVICE_NAME\", \"data\": \"...\"}");
+        System.out.println("  Hub → Dashboard (WebSocket):");
+        System.out.println("    {\"type\": \"SERVICE_RESULT\", \"result_from\": \"...\", \"data\": \"...\"}");
         System.out.println();
         System.out.println("Configuration:");
         System.out.println("  • Thread Pool Size: " + THREAD_POOL_SIZE);
@@ -204,6 +238,7 @@ public class HubServer {
         System.out.println();
         System.out.println("=".repeat(70));
         System.out.println("[HUB] Ready to accept service connections");
+        System.out.println("[HUB] Message Broker activated for command routing and result aggregation");
         System.out.println("[HUB] Press Ctrl+C to shutdown");
         System.out.println("=".repeat(70));
         System.out.println();

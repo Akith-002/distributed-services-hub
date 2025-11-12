@@ -20,6 +20,8 @@ public class ServiceRegistryServer implements Runnable {
     private final int port;
     private final ServiceRegistry registry;
     private final WebSocketBroadcaster broadcaster;
+    private final CommandRouter commandRouter;
+    private final ResultAggregator resultAggregator;
     private final int threadPoolSize;
 
     private ServerSocket serverSocket;
@@ -32,13 +34,20 @@ public class ServiceRegistryServer implements Runnable {
      * @param port Port to listen on
      * @param registry Service registry
      * @param broadcaster WebSocket broadcaster
+     * @param commandRouter Command router for service commands
+     * @param resultAggregator Result aggregator for service results
      * @param threadPoolSize Number of threads in thread pool
      */
     public ServiceRegistryServer(int port, ServiceRegistry registry, 
-                                WebSocketBroadcaster broadcaster, int threadPoolSize) {
+                                WebSocketBroadcaster broadcaster,
+                                CommandRouter commandRouter,
+                                ResultAggregator resultAggregator,
+                                int threadPoolSize) {
         this.port = port;
         this.registry = registry;
         this.broadcaster = broadcaster;
+        this.commandRouter = commandRouter;
+        this.resultAggregator = resultAggregator;
         this.threadPoolSize = threadPoolSize;
     }
 
@@ -79,7 +88,7 @@ public class ServiceRegistryServer implements Runnable {
 
                 // Handle connection in thread pool
                 ServiceRegistryHandler handler = new ServiceRegistryHandler(
-                        clientSocket, registry, broadcaster);
+                        clientSocket, registry, broadcaster, commandRouter, resultAggregator);
                 threadPool.execute(handler);
 
             } catch (IOException e) {

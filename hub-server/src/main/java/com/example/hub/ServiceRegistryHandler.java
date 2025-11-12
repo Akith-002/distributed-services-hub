@@ -5,10 +5,17 @@ import java.net.Socket;
 
 /**
  * Handles individual TCP connections from services.
- * Processes REGISTER, HEARTBEAT, and DEREGISTER messages.
+ * Processes REGISTER, HEARTBEAT, DEREGISTER messages.
+ * Also routes commands TO services and receives results FROM services.
  * 
  * Core Concept: Thread-per-client model (Lesson 3 & 6)
  * Each service connection runs in its own thread via ExecutorService.
+ * 
+ * Bidirectional Communication:
+ * 1. Receive: REGISTER, HEARTBEAT, DEREGISTER (service protocol messages)
+ * 2. Send: Commands routed from Dashboard (command router)
+ * 3. Receive: Results from services (result aggregator)
+ * 4. Send: Responses/Confirmations
  * 
  * @author Member 1 - Hub Server Implementation
  * @version 1.0
@@ -17,7 +24,10 @@ public class ServiceRegistryHandler implements Runnable {
     private final Socket socket;
     private final ServiceRegistry registry;
     private final WebSocketBroadcaster broadcaster;
+    private final CommandRouter commandRouter;
+    private final ResultAggregator resultAggregator;
     private String serviceName;
+    private PrintWriter writer;
 
     /**
      * Create a new service connection handler
@@ -25,11 +35,18 @@ public class ServiceRegistryHandler implements Runnable {
      * @param socket Connected socket from service
      * @param registry Service registry
      * @param broadcaster WebSocket broadcaster for dashboard updates
+     * @param commandRouter Command router for routing commands to services
+     * @param resultAggregator Result aggregator for broadcasting service results
      */
-    public ServiceRegistryHandler(Socket socket, ServiceRegistry registry, WebSocketBroadcaster broadcaster) {
+    public ServiceRegistryHandler(Socket socket, ServiceRegistry registry, 
+                                 WebSocketBroadcaster broadcaster,
+                                 CommandRouter commandRouter,
+                                 ResultAggregator resultAggregator) {
         this.socket = socket;
         this.registry = registry;
         this.broadcaster = broadcaster;
+        this.commandRouter = commandRouter;
+        this.resultAggregator = resultAggregator;
     }
 
     /**
@@ -40,7 +57,7 @@ public class ServiceRegistryHandler implements Runnable {
         try {
             BufferedReader reader = new BufferedReader(
                     new InputStreamReader(socket.getInputStream()));
-            PrintWriter writer = new PrintWriter(socket.getOutputStream(), true);
+            writer = new PrintWriter(socket.getOutputStream(), true);
 
             String message;
             while ((message = reader.readLine()) != null) {
@@ -53,9 +70,13 @@ public class ServiceRegistryHandler implements Runnable {
             }
         } finally {
             // Cleanup on disconnect
-            if (serviceName != null && registry.contains(serviceName)) {
-                registry.deregister(serviceName);
-                broadcaster.broadcastRegistry(registry);
+            if (serviceName != null) {
+                if (registry.contains(serviceName)) {
+                    registry.deregister(serviceName);
+                    broadcaster.broadcastRegistry(registry);
+                }
+                // Deregister command route
+                commandRouter.deregisterServiceConnection(serviceName);
             }
 
             try {
@@ -136,6 +157,10 @@ public class ServiceRegistryHandler implements Runnable {
 
         if (success) {
             this.serviceName = incomingServiceName;
+            
+            // Register command route for this service
+            commandRouter.registerServiceConnection(incomingServiceName, writer);
+            
             sendOk(writer, "Service registered successfully");
 
             // Broadcast updated registry to all dashboards

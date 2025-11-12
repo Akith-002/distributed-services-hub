@@ -9,6 +9,13 @@ import java.util.concurrent.CopyOnWriteArrayList;
 /**
  * Handles WebSocket connections from React Dashboard.
  * Broadcasts service registry updates to all connected dashboards.
+ * Also receives and routes commands from dashboard to services.
+ * 
+ * Message Flow:
+ * 1. Dashboard → Hub (Commands): {"command_for": "SERVICE_NAME", "payload": "..."}
+ * 2. Hub → Services (Routed Command)
+ * 3. Service → Hub (Results): {"result_from": "SERVICE_NAME", "data": "..."}
+ * 4. Hub → Dashboard (Broadcasted Result)
  * 
  * @author Member 1 - Hub Server Implementation
  * @version 1.0
@@ -16,6 +23,8 @@ import java.util.concurrent.CopyOnWriteArrayList;
 public class WebSocketBroadcaster {
     private static final List<WsContext> connectedDashboards = new CopyOnWriteArrayList<>();
     private static final Gson gson = new Gson();
+    private CommandRouter commandRouter;
+    private ResultAggregator resultAggregator;
 
     /**
      * Called when a dashboard connects
@@ -38,12 +47,19 @@ public class WebSocketBroadcaster {
      */
     public void onMessage(WsContext ctx, String message) {
         try {
+            @SuppressWarnings("unchecked")
             Map<String, Object> msg = gson.fromJson(message, Map.class);
             String type = (String) msg.get("type");
 
-            if ("FETCH_SERVICES".equals(type)) {
+            if ("COMMAND".equals(type)) {
+                // Dashboard is sending a command to a service
+                if (commandRouter != null) {
+                    commandRouter.routeCommand(message);
+                } else {
+                    System.err.println("[WEBSOCKET] CommandRouter not initialized");
+                }
+            } else if ("FETCH_SERVICES".equals(type)) {
                 // Dashboard requesting current service list
-                // This will be handled by HubServer
                 System.out.println("[WEBSOCKET] Dashboard requested service list");
             } else {
                 System.out.println("[WEBSOCKET] Received message from dashboard: " + message);
@@ -128,5 +144,19 @@ public class WebSocketBroadcaster {
     public void onError(WsContext ctx, Throwable error) {
         System.err.println("[WEBSOCKET] Error: " + error.getMessage());
         error.printStackTrace();
+    }
+
+    /**
+     * Set the command router for handling dashboard commands
+     */
+    public void setCommandRouter(CommandRouter router) {
+        this.commandRouter = router;
+    }
+
+    /**
+     * Set the result aggregator for broadcasting service results
+     */
+    public void setResultAggregator(ResultAggregator aggregator) {
+        this.resultAggregator = aggregator;
     }
 }
