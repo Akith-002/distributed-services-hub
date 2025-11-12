@@ -61,17 +61,8 @@ public class TaskServiceServer {
             System.out.println("    Press Ctrl+C to stop                         ");
             System.out.println("=================================================\n");
             
-            // Start command listener to receive commands from Hub
-            System.out.println("[RMI_SERVICE] Starting command listener for Hub integration...");
-            CommandListener commandListener = new CommandListener();
-            commandListener.connect();
-            Thread listenerThread = new Thread(commandListener, "CommandListenerThread");
-            listenerThread.setDaemon(false);
-            listenerThread.start();
-            System.out.println("[RMI_SERVICE] Command listener started - ready to receive commands from Dashboard");
-            
-            // Keep the server running (wait for listener thread)
-            listenerThread.join();
+            // Keep the server running
+            Thread.currentThread().join();
             
         } catch (Exception e) {
             System.err.println("[RMI_SERVICE] Server error: " + e.getMessage());

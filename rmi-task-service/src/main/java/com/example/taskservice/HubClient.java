@@ -1,11 +1,14 @@
 package com.example.taskservice;
 
+import org.json.JSONObject;
 import java.io.*;
 import java.net.Socket;
+import java.rmi.registry.LocateRegistry;
+import java.rmi.registry.Registry;
 import java.util.concurrent.*;
 
 /**
- * Manages registration and heartbeat with Hub
+ * Manages registration, heartbeat, and command listening with Hub
  */
 public class HubClient {
     private static final String HUB_HOST = "localhost";
@@ -17,6 +20,8 @@ public class HubClient {
     private ScheduledExecutorService heartbeatScheduler;
     private Socket registrationSocket;
     private PrintWriter out;
+    private BufferedReader in;
+    private volatile boolean listening = false;
 
     /**
      * Register service with Hub
@@ -26,6 +31,7 @@ public class HubClient {
         try {
             registrationSocket = new Socket(HUB_HOST, HUB_PORT);
             out = new PrintWriter(registrationSocket.getOutputStream(), true);
+            in = new BufferedReader(new InputStreamReader(registrationSocket.getInputStream()));
             
             // Correct format: REGISTER::ServiceName::Host::Port
             String registerMsg = "REGISTER::" + SERVICE_NAME + "::" + SERVICE_HOST + "::" + SERVICE_PORT;
@@ -35,6 +41,9 @@ public class HubClient {
             
             // Start heartbeat
             startHeartbeat();
+            
+            // Start command listener on same socket
+            startCommandListener();
             
         } catch (IOException e) {
             System.err.println("[HUB_CLIENT] Failed to register with Hub: " + e.getMessage());
@@ -61,10 +70,126 @@ public class HubClient {
     }
 
     /**
+     * Start listening for commands from Hub on the same socket
+     */
+    private void startCommandListener() {
+        listening = true;
+        Thread listenerThread = new Thread(() -> {
+            System.out.println("[HUB_CLIENT] Command listener started on registration socket");
+            try {
+                String message;
+                while (listening && (message = in.readLine()) != null) {
+                    System.out.println("[HUB_CLIENT] Received from Hub: " + message);
+                    handleCommand(message);
+                }
+            } catch (IOException e) {
+                if (listening) {
+                    System.err.println("[HUB_CLIENT] Error reading from Hub: " + e.getMessage());
+                }
+            }
+        }, "HubCommandListener");
+        listenerThread.setDaemon(false);
+        listenerThread.start();
+    }
+
+    /**
+     * Handle command from Hub by invoking RMI method
+     */
+    private void handleCommand(String message) {
+        // Filter out non-command messages (heartbeats, OK responses, etc.)
+        if (message.startsWith("OK::") || message.startsWith("HEARTBEAT::") || 
+            message.startsWith("REGISTER::") || message.startsWith("DEREGISTER::")) {
+            // Ignore these protocol messages
+            return;
+        }
+        
+        // Only process JSON commands
+        if (!message.trim().startsWith("{")) {
+            // Not a JSON command, ignore
+            return;
+        }
+        
+        try {
+            JSONObject command = new JSONObject(message);
+            String taskName = command.optString("command", "");
+            
+            if (taskName.isEmpty()) {
+                taskName = command.optString("payload", "");
+            }
+            
+            System.out.println("[HUB_CLIENT] Executing task: " + taskName);
+            
+            // Look up RMI service and invoke method
+            Registry registry = LocateRegistry.getRegistry("localhost", 1099);
+            TaskService service = (TaskService) registry.lookup("TaskService");
+            
+            // Execute the task remotely
+            String result = service.executeTask(taskName);
+            
+            System.out.println("[HUB_CLIENT] Task completed: " + result);
+            
+            // Send result back to Hub
+            sendResultToHub(taskName, result);
+            
+        } catch (Exception e) {
+            System.err.println("[HUB_CLIENT] Error handling command: " + e.getMessage());
+            e.printStackTrace();
+            sendErrorToHub(e.getMessage());
+        }
+    }
+
+    /**
+     * Send successful result back to Hub for Dashboard display
+     */
+    private void sendResultToHub(String taskName, String result) {
+        try {
+            JSONObject response = new JSONObject();
+            response.put("result_from", SERVICE_NAME);
+            
+            JSONObject data = new JSONObject();
+            data.put("task", taskName);
+            data.put("result", result);
+            data.put("status", "success");
+            
+            response.put("data", data.toString());
+            
+            out.println(response.toString());
+            System.out.println("[HUB_CLIENT] Sent result to Hub: " + response.toString());
+            
+        } catch (Exception e) {
+            System.err.println("[HUB_CLIENT] Error sending result: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Send error result back to Hub
+     */
+    private void sendErrorToHub(String errorMessage) {
+        try {
+            JSONObject response = new JSONObject();
+            response.put("result_from", SERVICE_NAME);
+            
+            JSONObject data = new JSONObject();
+            data.put("status", "error");
+            data.put("error", errorMessage);
+            
+            response.put("data", data.toString());
+            
+            out.println(response.toString());
+            System.out.println("[HUB_CLIENT] Sent error to Hub: " + response.toString());
+            
+        } catch (Exception e) {
+            System.err.println("[HUB_CLIENT] Error sending error message: " + e.getMessage());
+        }
+    }
+
+    /**
      * Deregister from Hub and cleanup
      */
     public void deregister() {
         try {
+            listening = false;
+            
             if (heartbeatScheduler != null) {
                 heartbeatScheduler.shutdown();
             }
@@ -74,6 +199,10 @@ public class HubClient {
                 out.println(deregisterMsg);
                 System.out.println("[HUB_CLIENT] Deregistered from Hub");
                 out.close();
+            }
+            
+            if (in != null) {
+                in.close();
             }
             
             if (registrationSocket != null && !registrationSocket.isClosed()) {

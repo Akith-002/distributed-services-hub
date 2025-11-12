@@ -1,5 +1,7 @@
 package com.example.apigateway;
 
+import com.google.gson.Gson;
+import com.google.gson.JsonObject;
 import java.io.*;
 import java.net.Socket;
 import java.util.concurrent.Executors;
@@ -12,14 +14,11 @@ import java.util.concurrent.TimeUnit;
  * Responsibilities:
  * - Register API Gateway Service with Hub
  * - Send periodic heartbeat messages
+ * - Listen for commands from Hub on registration socket
  * - Gracefully deregister on shutdown
  * 
- * PHASE 3 NEW: Message Broker Integration
- * - Registers both WebSocket port (9001) and Command Listener port (9011)
- * - Hub uses command listener port to route commands for message broker pattern
- * 
  * Protocol:
- * - REGISTER::ApiGateway::localhost::9001::9011 (PHASE 3: includes command listener port)
+ * - REGISTER::ApiGateway::localhost::9001
  * - HEARTBEAT::ApiGateway
  * - DEREGISTER::ApiGateway
  */
@@ -29,19 +28,28 @@ public class HubClient {
     private static final String SERVICE_NAME = "ApiGateway";
     private static final String SERVICE_HOST = "127.0.0.1";
     private static final int SERVICE_PORT = 9001;
-    private static final int COMMAND_LISTENER_PORT = 9011; // PHASE 3 NEW - Message broker port
     private static final long HEARTBEAT_INTERVAL = 10; // seconds
     
     private Socket socket;
     private PrintWriter out;
+    private BufferedReader in;
     private ScheduledExecutorService scheduler;
     private volatile boolean connected = false;
+    private volatile boolean listening = false;
+    private ExternalApiClient apiClient;
     
     /**
      * Initialize HubClient (creates scheduler but doesn't connect yet)
      */
     public HubClient() {
         this.scheduler = Executors.newScheduledThreadPool(1);
+    }
+    
+    /**
+     * Set the API client for executing commands
+     */
+    public void setApiClient(ExternalApiClient apiClient) {
+        this.apiClient = apiClient;
     }
     
     /**
@@ -52,6 +60,7 @@ public class HubClient {
             System.out.println("[HubClient] Attempting to connect to Hub at " + HUB_HOST + ":" + HUB_PORT);
             socket = new Socket(HUB_HOST, HUB_PORT);
             out = new PrintWriter(socket.getOutputStream(), true);
+            in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
             connected = true;
             
             System.out.println("[HubClient] Connected to Hub successfully");
@@ -61,6 +70,9 @@ public class HubClient {
             
             // Start heartbeat scheduler
             startHeartbeat();
+            
+            // Start command listener on registration socket
+            startCommandListener();
             
             return true;
         } catch (IOException e) {
@@ -79,13 +91,11 @@ public class HubClient {
             return;
         }
         
-        // PHASE 3 NEW: Register with command listener port for message broker
-        String registerMsg = String.format("REGISTER::%s::%s::%d::%d", 
-            SERVICE_NAME, SERVICE_HOST, SERVICE_PORT, COMMAND_LISTENER_PORT);
+        // Simplified registration - just service name, host, and port
+        String registerMsg = String.format("REGISTER::%s::%s::%d", 
+            SERVICE_NAME, SERVICE_HOST, SERVICE_PORT);
         
         System.out.println("[HubClient] Sending: " + registerMsg);
-        System.out.println("[HubClient] Service registered with WebSocket port " + SERVICE_PORT + 
-                         " and Command Listener port " + COMMAND_LISTENER_PORT);
         out.println(registerMsg);
         out.flush();
         
@@ -112,6 +122,136 @@ public class HubClient {
     }
     
     /**
+     * Start listening for commands from Hub on the same socket
+     */
+    private void startCommandListener() {
+        listening = true;
+        Thread listenerThread = new Thread(() -> {
+            System.out.println("[HubClient] Command listener started on registration socket");
+            try {
+                String message;
+                while (listening && (message = in.readLine()) != null) {
+                    System.out.println("[HubClient] Received from Hub: " + message);
+                    handleCommand(message);
+                }
+            } catch (IOException e) {
+                if (listening) {
+                    System.err.println("[HubClient] Error reading from Hub: " + e.getMessage());
+                }
+            }
+        }, "HubCommandListener");
+        listenerThread.setDaemon(false);
+        listenerThread.start();
+    }
+    
+    /**
+     * Handle command from Hub
+     */
+    private void handleCommand(String message) {
+        // Filter out non-command messages (heartbeats, OK responses, etc.)
+        if (message.startsWith("OK::") || message.startsWith("HEARTBEAT::") || 
+            message.startsWith("REGISTER::") || message.startsWith("DEREGISTER::")) {
+            return;
+        }
+        
+        // Only process JSON commands
+        if (!message.trim().startsWith("{")) {
+            return;
+        }
+        
+        try {
+            Gson gson = new Gson();
+            JsonObject command = gson.fromJson(message, JsonObject.class);
+            
+            String commandType = command.has("command") ? command.get("command").getAsString() : "";
+            
+            System.out.println("[HubClient] Executing command: " + commandType);
+            
+            if (apiClient != null) {
+                // Execute command based on type
+                if (commandType.equals("fetchWeather") || commandType.equals("get-weather")) {
+                    String city = "Colombo"; // Default city
+                    if (command.has("payload") && command.get("payload").isJsonObject()) {
+                        JsonObject payload = command.getAsJsonObject("payload");
+                        if (payload.has("city")) {
+                            city = payload.get("city").getAsString();
+                        }
+                    }
+                    ExternalApiClient.WeatherData weatherData = apiClient.fetchWeatherByCity(city);
+                    
+                    // Send weather data as JSON object
+                    sendWeatherResultToHub(weatherData);
+                } else {
+                    sendErrorToHub("Unknown command: " + commandType);
+                }
+                
+                System.out.println("[HubClient] Command completed");
+            } else {
+                System.err.println("[HubClient] API client not set");
+                sendErrorToHub("API client not initialized");
+            }
+            
+        } catch (Exception e) {
+            System.err.println("[HubClient] Error handling command: " + e.getMessage());
+            e.printStackTrace();
+            sendErrorToHub(e.getMessage());
+        }
+    }
+    
+    /**
+     * Send weather result back to Hub for Dashboard display
+     */
+    private void sendWeatherResultToHub(ExternalApiClient.WeatherData weatherData) {
+        try {
+            // Create the outer response object
+            JsonObject response = new JsonObject();
+            response.addProperty("result_from", SERVICE_NAME);
+            
+            // Create the weather data object matching Open-Meteo API format for Dashboard
+            JsonObject dataObj = new JsonObject();
+            
+            // Add current weather nested object (Dashboard expects this structure)
+            JsonObject current = new JsonObject();
+            current.addProperty("temperature_2m", weatherData.temperature);
+            current.addProperty("weather_code", weatherData.weatherCode);
+            
+            dataObj.add("current", current);
+            dataObj.addProperty("location", weatherData.location);
+            dataObj.addProperty("timestamp", weatherData.timestamp);
+            
+            // Set data as JSON string (Dashboard will parse it)
+            response.addProperty("data", dataObj.toString());
+            
+            out.println(response.toString());
+            System.out.println("[HubClient] Sent weather result to Hub: " + response.toString());
+            
+        } catch (Exception e) {
+            System.err.println("[HubClient] Error sending result: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Send error result back to Hub for Dashboard display
+     */
+    private void sendErrorToHub(String errorMessage) {
+        try {
+            JsonObject response = new JsonObject();
+            response.addProperty("result_from", SERVICE_NAME);
+            
+            JsonObject errorObj = new JsonObject();
+            errorObj.addProperty("error", errorMessage);
+            
+            response.addProperty("data", errorObj.toString());
+            
+            out.println(response.toString());
+            System.out.println("[HubClient] Sent error to Hub: " + response.toString());
+            
+        } catch (Exception e) {
+            System.err.println("[HubClient] Error sending error message: " + e.getMessage());
+        }
+    }
+    
+    /**
      * Deregister service from Hub and close connection
      */
     public void disconnect() {
@@ -121,12 +261,18 @@ public class HubClient {
         }
         
         try {
+            listening = false;
+            
             String deregisterMsg = String.format("DEREGISTER::%s", SERVICE_NAME);
             System.out.println("[HubClient] Sending: " + deregisterMsg);
             out.println(deregisterMsg);
             out.flush();
             
             Thread.sleep(500); // Give Hub time to process deregistration
+            
+            if (in != null) {
+                in.close();
+            }
             
             if (socket != null && !socket.isClosed()) {
                 socket.close();

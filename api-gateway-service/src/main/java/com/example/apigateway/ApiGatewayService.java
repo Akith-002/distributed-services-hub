@@ -87,6 +87,7 @@ public class ApiGatewayService {
             // Step 2: Connect to Hub
             System.out.println("[STARTUP] Step 2: Connecting to Hub Server...");
             hubClient = new HubClient();
+            hubClient.setApiClient(apiClient); // Set API client for command execution
             if (!hubClient.connect()) {
                 System.err.println("[STARTUP] ✗ Failed to connect to Hub. Make sure Hub is running on port 7070");
                 System.err.println("[STARTUP] You can run Hub Server with: java -jar ../hub-server/target/hub-server-1.0-SNAPSHOT.jar");
