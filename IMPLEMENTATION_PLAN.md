@@ -29,14 +29,21 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    THE HUB (Central Registry)                │
+│              THE HUB (Central Registry & Message Broker)     │
 │  ├─ Service Registry (TCP Server + Concurrency)             │
 │  ├─ Heartbeat Monitor (30-second timeout)                   │
 │  ├─ WebSocket Broadcaster (Sends service updates)           │
+│  ├─ Command Router (Forwards commands to services)          │
+│  ├─ Result Aggregator (Receives results from services)      │
 │  └─ RESTful API (Service status, statistics)                │
 └────┬─────────────────────────────────────────────────────────┘
      │
-     ├── Connected to React Dashboard (Network Visualization)
+     ├── Connected to React Dashboard (UI with Service Tabs)
+     │   ├─ Service Registry Tab (Live service status)
+     │   ├─ API Gateway Tab (Weather fetch demo)
+     │   ├─ Security Test Tab (JSSE connection demo)
+     │   ├─ NIO Log Stream Tab (Real-time log viewer)
+     │   └─ RMI Task Runner Tab (Remote task execution)
      │
      ├── Connected to API Gateway Service (HttpURLConnection)
      │
@@ -47,9 +54,93 @@
      └── Connected to RMI Task Runner (Remote Method Invocation)
 ```
 
+**Core Architecture Pattern: Message Broker**
+
+The Hub acts as a central message broker:
+
+1. **Dashboard → Hub → Service**: Dashboard sends commands via WebSocket to Hub, Hub forwards to appropriate service
+2. **Service → Hub → Dashboard**: Services send results back to Hub, Hub broadcasts to Dashboard
+3. **Clean Separation**: Dashboard only communicates with Hub, never directly with services
+
 ---
 
-## 2. DETAILED BREAKDOWN BY MEMBER
+## 2. UI DEMONSTRATION STRATEGY
+
+### The Core Idea: Hub as Message Broker
+
+**Problem:** Each member needs a visual demonstration of their networking concept on the Dashboard, not just CLI output.
+
+**Solution:** The Hub (Member 1) becomes a **Message Broker** that routes commands and results between the Dashboard and all services.
+
+### Message Flow Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     REACT DASHBOARD                          │
+│  ┌──────┬──────┬──────┬──────┬──────┐                      │
+│  │ Tab1 │ Tab2 │ Tab3 │ Tab4 │ Tab5 │                      │
+│  └──────┴──────┴──────┴──────┴──────┘                      │
+└───────────────────┬──────────────────────────────────────────┘
+                    │ WebSocket (Commands & Results)
+                    ▼
+┌─────────────────────────────────────────────────────────────┐
+│                   HUB (MESSAGE BROKER)                       │
+│  ┌──────────────┐    ┌──────────────┐                      │
+│  │ Command      │    │ Result       │                      │
+│  │ Router       │◄───┤ Aggregator   │                      │
+│  └──────┬───────┘    └──────▲───────┘                      │
+└─────────┼──────────────────┼──────────────────────────────┘
+          │                  │
+          │ TCP Commands     │ TCP Results
+          ▼                  │
+┌─────────────────────────────┼──────────────────────────────┐
+│  API Gateway ───────────────┘                               │
+│  JSSE Service ──────────────┐                               │
+│  NIO Log Service ────────────┤                               │
+│  RMI Task Service ───────────┘                               │
+└──────────────────────────────────────────────────────────────┘
+```
+
+### Communication Patterns
+
+**Pattern 1: Dashboard → Service (Command)**
+
+1. User clicks button on Dashboard (e.g., "Fetch Weather")
+2. Dashboard sends WebSocket message to Hub: `{"command_for": "API_GATEWAY", "payload": "get-weather"}`
+3. Hub routes command to API Gateway service via TCP
+4. API Gateway executes its core task (HttpURLConnection)
+5. API Gateway sends result to Hub: `{"result_from": "API_GATEWAY", "data": "..."}`
+6. Hub broadcasts result to all Dashboard clients via WebSocket
+7. Dashboard displays result in appropriate tab
+
+**Pattern 2: Service → Dashboard (Proactive Update)**
+
+1. NIO Log Service receives a log message from any service
+2. NIO Service forwards to Hub: `{"result_from": "NIO_SERVICE", "data": "LOG: ..."}`
+3. Hub broadcasts to Dashboard
+4. Dashboard appends to log stream tab
+
+### Why This Architecture Works
+
+✅ **Clean Separation:** Dashboard only talks to Hub, never directly to services  
+✅ **Consistent Pattern:** All services use same command/result format  
+✅ **Real Networking:** Each member still implements their core concept (HttpURLConnection, SSLServerSocket, NIO, RMI)  
+✅ **Visual Demonstration:** Every member gets a dedicated tab showing their work  
+✅ **No CLI Required:** Everything visible in browser interface
+
+### Dashboard Tab Mapping
+
+| Tab # | Name             | Owner    | Core Concept Demonstrated         | Button/Trigger             |
+| ----- | ---------------- | -------- | --------------------------------- | -------------------------- |
+| 1     | Service Registry | Member 1 | Multithreading, ConcurrentHashMap | Auto-updates (no button)   |
+| 2     | API Gateway      | Member 2 | HttpURLConnection                 | "Fetch Weather" button     |
+| 3     | Security Test    | Member 3 | SSLServerSocket, JSSE             | "Run Security Test" button |
+| 4     | NIO Log Stream   | Member 4 | Java NIO, Selector                | Auto-updates (no button)   |
+| 5     | RMI Task Runner  | Member 5 | Java RMI                          | "Execute Task" button      |
+
+---
+
+## 3. DETAILED BREAKDOWN BY MEMBER
 
 ### MEMBER 1: HUB SERVER (Multithreading & Concurrency)
 
@@ -69,16 +160,34 @@
    - Change: Instead of handling chat messages, handle service REGISTER/DEREGISTER/HEARTBEAT messages
    - Port: Remain at 7070/7443
 
-2. **Define Hub Protocol**
+2. **Define Hub Protocol - Extended for Message Broker**
 
    ```
-   Message Format: TYPE::ServiceName::Host::Port[::Metadata]
-
-   Types:
+   Registration Protocol:
    - REGISTER::ApiGateway::localhost::9001
    - DEREGISTER::ApiGateway
    - HEARTBEAT::ApiGateway
    - FETCH_SERVICES (to get all registered services)
+
+   Command/Result Protocol (JSON over WebSocket):
+
+   Dashboard → Hub → Service (Commands):
+   {
+     "command_for": "API_GATEWAY",
+     "payload": "get-weather"
+   }
+
+   Service → Hub → Dashboard (Results):
+   {
+     "result_from": "API_GATEWAY",
+     "data": "{...weather_json...}"
+   }
+
+   Supported Services:
+   - API_GATEWAY
+   - JSSE_SERVICE
+   - NIO_SERVICE
+   - RMI_SERVICE
    ```
 
 3. **Service Registry Data Structure**
@@ -106,9 +215,45 @@
    - If `(currentTime - lastHeartbeat) > 30 seconds`, remove service and broadcast update
    - Implementation: Use `ScheduledExecutorService` for periodic heartbeat checks
 
-6. **WebSocket Broadcaster Enhancement**
+6. **Message Broker Implementation (NEW CORE FEATURE)**
 
-   - When service list changes (JOIN/LEAVE/TIMEOUT), broadcast JSON to all connected dashboards:
+   a. **Command Router - Dashboard to Services**
+
+   - Listen for WebSocket messages from Dashboard
+   - Parse command format: `{"command_for": "SERVICE_NAME", "payload": "..."}`
+   - Lookup service in `ConcurrentHashMap<ServiceName, Socket>`
+   - Forward payload to the correct service's TCP connection
+   - Example:
+     ```java
+     void routeCommand(JsonObject command) {
+         String targetService = command.getString("command_for");
+         String payload = command.getString("payload");
+
+         ServiceInfo service = serviceRegistry.get(targetService);
+         if (service != null && service.socket != null) {
+             PrintWriter out = new PrintWriter(service.socket.getOutputStream());
+             out.println(payload);
+             out.flush();
+         }
+     }
+     ```
+
+   b. **Result Aggregator - Services to Dashboard**
+
+   - Each service connection handler listens for result messages
+   - Parse result format: `{"result_from": "SERVICE_NAME", "data": "..."}`
+   - Broadcast result to all connected Dashboard clients via WebSocket
+   - Example:
+     ```java
+     void handleServiceResult(String serviceMessage) {
+         JsonObject result = Json.parse(serviceMessage);
+         broadcastToAllDashboards(result);
+     }
+     ```
+
+   c. **WebSocket Broadcaster Enhancement**
+
+   - When service list changes (JOIN/LEAVE/TIMEOUT), broadcast JSON:
      ```json
      {
        "type": "SERVICE_REGISTRY_UPDATE",
@@ -119,18 +264,19 @@
              "host": "localhost",
              "port": 9001,
              "status": "online"
-           },
-           {
-             "name": "SecureFileService",
-             "host": "localhost",
-             "port": 9090,
-             "status": "online"
            }
          ]
        }
      }
      ```
-   - Use existing `WebSocketHandler.broadcast()` mechanism or enhance it
+   - When service results arrive, broadcast:
+     ```json
+     {
+       "type": "SERVICE_RESULT",
+       "result_from": "API_GATEWAY",
+       "data": "{...}"
+     }
+     ```
 
 7. **Logging & Demo Output**
    - Console should show:
@@ -144,13 +290,28 @@
      [HUB] Broadcasting updated service list to dashboards...
      ```
 
+#### UI Demonstration for Member 1
+
+**Your UI Demo:** The "Service Registry" tab on the Dashboard is your primary demonstration. This proves your concurrent `ConcurrentHashMap` and multithreading architecture works.
+
+**Live Demo Steps:**
+
+1. Start Hub Server
+2. As other members start their services, the Service Registry tab updates in real-time
+3. When services timeout, they disappear from the list automatically
+4. Multiple concurrent service registrations are handled without blocking
+
+**Your UI Contribution:** This tab is 100% your work - it demonstrates your core networking concepts (multithreading, concurrency, service registry).
+
 #### Acceptance Criteria
 
 - ✅ Multiple services can connect simultaneously (concurrency tested)
 - ✅ Services register, heartbeat, and deregister properly
-- ✅ Hub broadcasts service list changes in real-time via WebSocket
+- ✅ Hub acts as message broker - routes commands from Dashboard to services
+- ✅ Hub forwards service results back to Dashboard
 - ✅ Dashboard receives and displays service updates live
 - ✅ Heartbeat timeout removes dead services automatically
+- ✅ Command routing works for all service types (API, JSSE, NIO, RMI)
 
 ---
 
@@ -167,41 +328,125 @@
 
 **Transformation Tasks**
 
-1. **Rename Chat Components → Service Components**
+1. **Create Multi-Tab Dashboard Layout**
 
-   - Rename component files (but keep existing ones for reference)
-   - New: `ServiceDashboard.jsx` (replaces `ChatRoom.jsx`)
-   - New: `ServiceRegistry.jsx` (displays active services)
-   - Keep: Core WebSocket connection logic
+   - Implement tabbed interface with 5 tabs:
+     - **Tab 1: Service Registry** (Member 1's demo)
+     - **Tab 2: API Gateway** (Member 2's demo)
+     - **Tab 3: Security Test** (Member 3's demo)
+     - **Tab 4: NIO Log Stream** (Member 4's demo)
+     - **Tab 5: RMI Task Runner** (Member 5's demo)
 
-2. **Refactor UI Purpose**
+2. **Tab 1: Service Registry (Member 1's Demo)**
 
-   - Old: Display chat users and messages
-   - New: Display registered services and their status
-   - Columns to display:
+   - Component: `ServiceRegistry.jsx`
+   - Display: Real-time list of registered services
+   - Columns:
      - Service Name
      - Host:Port
      - Status (Online/Offline/Timeout)
      - Last Heartbeat
-     - CPU Load (if available from RMI service)
-     - Action Buttons (View Logs, Execute Task, Download File, etc.)
+   - Updates automatically when services join/leave
 
-3. **Modify WebSocket Message Handler**
+3. **Tab 2: API Gateway Demo (Member 2's Demo)**
+
+   - Component: `ExternalDataFetcher.jsx`
+   - UI Elements:
+     - Button: "Fetch Weather from API"
+     - Input field for city/location (optional)
+     - Display area for weather results
+   - Logic:
+
+     ```jsx
+     function fetchWeather() {
+       const command = {
+         command_for: "API_GATEWAY",
+         payload: "get-weather",
+       };
+       websocket.send(JSON.stringify(command));
+     }
+
+     // On result received:
+     if (msg.type === "SERVICE_RESULT" && msg.result_from === "API_GATEWAY") {
+       setWeatherData(JSON.parse(msg.data));
+     }
+     ```
+
+4. **Tab 3: Security Test Demo (Member 3's Demo)**
+
+   - Component: `SecurityTestPanel.jsx`
+   - UI Elements:
+     - Button: "Run Security Connection Test"
+     - Display area for test results (2 test outcomes)
+   - Logic:
+
+     ```jsx
+     function runSecurityTest() {
+       const command = {
+         command_for: "JSSE_SERVICE",
+         payload: "run-test",
+       };
+       websocket.send(JSON.stringify(command));
+     }
+
+     // On result received:
+     if (msg.result_from === "JSSE_SERVICE") {
+       addTestResult(msg.data); // Shows FAILED or SUCCESS
+     }
+     ```
+
+5. **Tab 4: NIO Log Stream (Member 4's Demo)**
+
+   - Component: `NioLogStream.jsx`
+   - UI Elements:
+     - Auto-scrolling text area (like a terminal)
+     - Clear button
+   - Logic:
+     ```jsx
+     // On log received:
+     if (msg.result_from === "NIO_SERVICE") {
+       appendLog(msg.data); // Append to text area
+       scrollToBottom();
+     }
+     ```
+
+6. **Tab 5: RMI Task Runner (Member 5's Demo)**
+
+   - Component: `RmiTaskRunner.jsx`
+   - UI Elements:
+     - Dropdown: Select task (calculate-pi, fibonacci-10, etc.)
+     - Button: "Execute Remote Task"
+     - Display area for task result
+   - Logic:
+
+     ```jsx
+     function executeTask(taskName) {
+       const command = {
+         command_for: "RMI_SERVICE",
+         payload: taskName,
+       };
+       websocket.send(JSON.stringify(command));
+     }
+
+     // On result received:
+     if (msg.result_from === "RMI_SERVICE") {
+       setTaskResult(msg.data);
+     }
+     ```
+
+7. **Modify WebSocket Message Handler**
 
    ```jsx
-   // Instead of MESSAGE, USER_LIST_UPDATE, FILE_UPLOAD
-   // Handle: SERVICE_REGISTRY_UPDATE
+   switch (msg.type) {
+     case "SERVICE_REGISTRY_UPDATE":
+       setServices(msg.payload.services);
+       break;
 
-   case 'SERVICE_REGISTRY_UPDATE':
-     setServices(msg.payload.services);
-     break;
+     case "SERVICE_RESULT":
+       handleServiceResult(msg.result_from, msg.data);
+       break;
+   }
    ```
-
-4. **Add External API Query Component**
-   - Button: "Fetch Weather" → Calls API Gateway Service
-   - Input field for city/location
-   - Display result (temperature, description, etc.)
-   - Component: `ExternalDataFetcher.jsx`
 
 #### Part B: Java API Gateway Service
 
@@ -216,7 +461,7 @@
        ├── src/main/java/com/example/apigateway/
        │   ├── ApiGatewayService.java (MAIN - connects to Hub)
        │   ├── HubClient.java (TCP client to Hub)
-       │   ├── WebSocketServer.java (Receives commands from React)
+       │   ├── CommandListener.java (Listens for commands from Hub)
        │   └── ExternalApiClient.java (HttpURLConnection wrapper)
        └── src/main/resources/
            └── application.properties
@@ -226,12 +471,12 @@
 
    ```java
    // On startup:
-   String registerMsg = "REGISTER::ApiGateway::localhost::9001";
+   String registerMsg = "REGISTER::API_GATEWAY::localhost::9001";
    // Send to Hub on port 7070
    // Also start heartbeat thread every 10 seconds
    ```
 
-3. **Implement HttpURLConnection Client**
+3. **Implement HttpURLConnection Client (CORE CONCEPT)**
 
    - Endpoint: Weather API (e.g., Open-Meteo free API or similar)
    - Method: `fetchWeatherData(String city) → WeatherData`
@@ -255,11 +500,37 @@
      JSONObject json = new JSONObject(response);
      ```
 
-4. **WebSocket Server for React Dashboard Commands**
+4. **Command Listener for Hub Communication**
 
-   - Listen on port 9001 (announced to Hub)
-   - React sends: `{"command": "fetchWeather", "city": "Colombo"}`
-   - Service fetches external data, returns: `{"temperature": 28.5, "condition": "Sunny", ...}`
+   - Maintain persistent TCP connection to Hub
+   - Listen for commands forwarded by Hub: `"get-weather"`
+   - When command received:
+     1. Execute `fetchWeatherData()` using HttpURLConnection
+     2. Format result as JSON
+     3. Send back to Hub: `{"result_from": "API_GATEWAY", "data": "{temperature: 28.5, ...}"}`
+   - Example:
+     ```java
+     class CommandListener implements Runnable {
+         private Socket hubConnection;
+
+         public void run() {
+             BufferedReader in = new BufferedReader(
+                 new InputStreamReader(hubConnection.getInputStream()));
+             PrintWriter out = new PrintWriter(hubConnection.getOutputStream());
+
+             while (true) {
+                 String command = in.readLine();
+                 if ("get-weather".equals(command)) {
+                     String weatherData = fetchWeatherData();
+                     String result = "{\"result_from\": \"API_GATEWAY\", \"data\": "
+                                   + weatherData + "}";
+                     out.println(result);
+                     out.flush();
+                 }
+             }
+         }
+     }
+     ```
 
 5. **Logging Integration**
    - Connect to Member 4's Log Service on port 9091
@@ -269,13 +540,31 @@
      ApiGateway: HttpURLConnection successful
      ```
 
+#### UI Demonstration for Member 2
+
+**Your UI Demo:** The "API Gateway" tab on the Dashboard - this is your showcase.
+
+**Live Demo Steps:**
+
+1. Navigate to API Gateway tab
+2. Click "Fetch Weather from API"
+3. Dashboard sends command to Hub
+4. Hub forwards to your API Gateway service
+5. Your service uses HttpURLConnection to fetch real weather data
+6. Result appears on Dashboard in 2-3 seconds
+7. Repeat with different cities to show it's live
+
+**Your Core Concept Demonstrated:** HttpURLConnection to external APIs (Lesson 5)
+
 #### Acceptance Criteria
 
-- ✅ React Dashboard displays all registered services in real-time
-- ✅ Service status updates instantly when services join/leave
-- ✅ API Gateway service appears on dashboard
-- ✅ React button triggers HttpURLConnection call to external API
+- ✅ Dashboard has 5 functional tabs (one for each member's demo)
+- ✅ Tab 1 (Service Registry) displays all registered services in real-time
+- ✅ Tab 2 (API Gateway) has working "Fetch Weather" button
+- ✅ API Gateway service receives commands from Hub
+- ✅ HttpURLConnection successfully fetches external API data
 - ✅ Real-world data (weather) displayed on dashboard
+- ✅ All tabs functional and demonstrate each member's work
 - ✅ Logs sent to Log Service
 
 ---
@@ -373,18 +662,79 @@
    - On startup: Send `REGISTER::SecureFileService::localhost::9090`
    - Heartbeat every 10 seconds
 
-7. **Testing & Demo**
+7. **Implement UI-Triggered Security Test**
+
+   - Listen for command from Hub: `"run-test"`
+   - When command received, automatically run TWO test clients:
+
+   **Test Client 1: Insecure Socket (Should Fail)**
+
+   ```java
+   void runInsecureTest() {
+       try {
+           Socket insecureSocket = new Socket("localhost", 9090);
+           // This should fail because SSLServerSocket rejects non-SSL
+       } catch (Exception e) {
+           sendResultToHub("Test 1 (Insecure Socket): FAILED - " + e.getMessage());
+       }
+   }
+   ```
+
+   **Test Client 2: Secure SSLSocket (Should Succeed)**
+
+   ```java
+   void runSecureTest() {
+       try {
+           SSLSocketFactory factory = sslContext.getSocketFactory();
+           SSLSocket secureSocket = (SSLSocket) factory.createSocket("localhost", 9090);
+           secureSocket.startHandshake();
+           sendResultToHub("Test 2 (Secure SSLSocket): SUCCESS - Connected securely");
+       } catch (Exception e) {
+           sendResultToHub("Test 2 (Secure SSLSocket): FAILED - " + e.getMessage());
+       }
+   }
+   ```
+
+   - Send BOTH results back to Hub:
+     ```java
+     void sendResultToHub(String testResult) {
+         String result = "{\"result_from\": \"JSSE_SERVICE\", \"data\": \""
+                       + testResult + "\"}";
+         hubConnection.println(result);
+     }
+     ```
+
+8. **Testing & Demo**
    - Demo 1: Show service registered on Hub
-   - Demo 2: Connect with regular Socket → Connection fails ❌
-   - Demo 3: Connect with SSLSocket → Connection succeeds ✅
-   - Demo 4: Upload/download file securely
+   - Demo 2: From Dashboard, click "Run Security Test"
+   - Demo 3: Two results appear: One FAILED (insecure), One SUCCESS (secure)
+   - Demo 4: This proves your SSLServerSocket is working correctly
+
+#### UI Demonstration for Member 3
+
+**Your UI Demo:** The "Security Test" tab on the Dashboard - this proves your JSSE implementation works.
+
+**Live Demo Steps:**
+
+1. Navigate to Security Test tab
+2. Click "Run Security Connection Test"
+3. Dashboard sends command to Hub
+4. Hub forwards to your Secure File Service
+5. Your service runs TWO automated test clients
+6. First result appears: "Test 1 (Insecure Socket): FAILED ❌"
+7. Second result appears: "Test 2 (Secure SSLSocket): SUCCESS ✅"
+8. This proves your SSLServerSocket rejects insecure connections
+
+**Your Core Concept Demonstrated:** JSSE (Java Secure Socket Extension) and SSLServerSocket (Lesson 8)
 
 #### Acceptance Criteria
 
 - ✅ Uses SSLServerSocket (NOT regular ServerSocket)
 - ✅ Self-signed certificate and KeyStore properly configured
-- ✅ Regular Socket client fails to connect
-- ✅ SSLSocket client can store and retrieve files securely
+- ✅ Service listens for "run-test" command from Hub
+- ✅ Automated test shows insecure Socket FAILS to connect
+- ✅ Automated test shows secure SSLSocket SUCCEEDS
+- ✅ Both test results sent back to Hub and displayed on Dashboard
 - ✅ Service appears on Hub dashboard
 - ✅ Logs sent to Log Service
 
@@ -493,10 +843,64 @@
    - Member 3 (File Service): Sends file operation logs
    - Member 5 (Task Service): Sends task execution logs
 
-6. **Persistent Logging**
+6. **Forward Logs to Hub for Dashboard Display**
+
+   - When a log message is received from any service, process it twice:
+
+     1. Write to log file: `logs/service.log`
+     2. Forward to Hub for Dashboard display
+
+   - Example:
+
+     ```java
+     private void handleRead(SelectionKey key) throws IOException {
+         SocketChannel channel = (SocketChannel) key.channel();
+         ByteBuffer buffer = ByteBuffer.allocate(1024);
+
+         int bytesRead = channel.read(buffer);
+         if (bytesRead > 0) {
+             String logMessage = new String(buffer.array(), 0, bytesRead);
+
+             // 1. Write to file
+             writeLogFile(logMessage);
+
+             // 2. Forward to Hub for Dashboard
+             forwardToHub(logMessage);
+         }
+     }
+
+     private void forwardToHub(String logMessage) {
+         String result = "{\"result_from\": \"NIO_SERVICE\", \"data\": \"LOG: "
+                       + logMessage + "\"}";
+         hubConnection.println(result);
+     }
+     ```
+
+7. **Persistent Logging**
    - Write logs to file: `logs/service.log`
    - Rotate logs daily or by size
    - Console output for demo purposes
+
+#### UI Demonstration for Member 4
+
+**Your UI Demo:** The "NIO Log Stream" tab on the Dashboard - this is the most visually impressive demo.
+
+**Live Demo Steps:**
+
+1. Navigate to NIO Log Stream tab
+2. As all services run, this tab fills with real-time logs:
+   ```
+   [Hub] Service 'API_GATEWAY' registered
+   [ApiGateway] Weather fetched for Colombo (28.5°C)
+   [JSSE_SERVICE] Test 1 (Insecure Socket): FAILED
+   [JSSE_SERVICE] Test 2 (Secure SSLSocket): SUCCESS
+   [RMI_SERVICE] Task 'calculate-pi' completed
+   [Hub] Service 'API_GATEWAY' heartbeat received
+   ```
+3. All system activity appears here in real-time
+4. This proves your single-threaded NIO Selector is handling multiple concurrent log streams
+
+**Your Core Concept Demonstrated:** Java NIO (Non-blocking I/O with Selector) - Lesson 7
 
 #### Acceptance Criteria
 
@@ -505,6 +909,7 @@
 - ✅ Handles multiple concurrent connections non-blocking
 - ✅ Service appears on Hub dashboard
 - ✅ Logs from all other services appear in real-time
+- ✅ Logs forwarded to Hub and displayed on Dashboard
 - ✅ Logs persisted to file
 
 ---
@@ -659,9 +1064,58 @@
    }
    ```
 
-6. **Hub Registration**
-   - Send: `REGISTER::TaskService::rmi://localhost:1099/TaskService`
+6. **Integrate RMI Client with Hub (CRITICAL FOR UI DEMO)**
+
+   - Your RMI client code will run **inside the Hub server** (Member 1's code)
+   - When Hub receives command `{"command_for": "RMI_SERVICE", "payload": "calculate-pi"}`:
+
+     1. Hub internally calls your RMI client code
+     2. Your RMI client invokes remote method on your RMI server
+     3. RMI server returns result
+     4. RMI client gives result to Hub
+     5. Hub sends to Dashboard: `{"result_from": "RMI_SERVICE", "data": "Task 'calculate-pi' complete. Result: 3.14159"}`
+
+   - Implementation in Hub (Member 1 integrates this):
+     ```java
+     // In HubServer.java
+     void routeRmiCommand(String payload) {
+         try {
+             Registry registry = LocateRegistry.getRegistry("localhost", 1099);
+             TaskService service = (TaskService) registry.lookup("TaskService");
+
+             String result = service.executeTask(payload);
+
+             String response = "{\"result_from\": \"RMI_SERVICE\", \"data\": \""
+                             + result + "\"}";
+             broadcastToAllDashboards(response);
+         } catch (Exception e) {
+             e.printStackTrace();
+         }
+     }
+     ```
+
+7. **Hub Registration**
+   - Send: `REGISTER::RMI_SERVICE::rmi://localhost:1099/TaskService`
    - Heartbeat every 10 seconds
+
+#### UI Demonstration for Member 5
+
+**Your UI Demo:** The "RMI Task Runner" tab on the Dashboard - this shows distributed computing in action.
+
+**Live Demo Steps:**
+
+1. Navigate to RMI Task Runner tab
+2. Select task from dropdown: "calculate-pi"
+3. Click "Execute Remote Task"
+4. Dashboard sends command to Hub
+5. Hub uses your RMI client code to invoke your RMI server
+6. Your RMI server calculates Pi (Remote Method Invocation happens here)
+7. Result appears on Dashboard: "Task 'calculate-pi' complete. Result: 3.14159..."
+8. Repeat with different tasks to show remote method calls
+
+**Your Core Concept Demonstrated:** Java RMI (Remote Method Invocation) - Distributed computing
+
+**Why This Architecture:** RMI isn't web-friendly, so we run your RMI client alongside the Hub. The remote method invocation (your core concept) still happens between your client and server - the Hub just acts as a trigger.
 
 #### Acceptance Criteria
 
@@ -669,13 +1123,59 @@
 - ✅ RMI registry started and service bound
 - ✅ RMI client can successfully invoke remote methods
 - ✅ Remote exceptions properly handled
+- ✅ RMI client code integrated with Hub for UI commands
 - ✅ Service appears on Hub dashboard
 - ✅ Remote method calls work across network
+- ✅ Dashboard displays task execution results
 - ✅ Logs sent to Log Service
 
 ---
 
-## 3. IMPLEMENTATION PHASES & TIMELINE
+## 4. SUMMARY OF UI INTEGRATION REQUIREMENTS
+
+### Quick Reference for Each Member
+
+**Member 1 (Hub Server):**
+
+- ✅ Existing: Service registry, heartbeat monitoring, WebSocket broadcasting
+- 🆕 **Add Command Router:** Parse `{"command_for": "...", "payload": "..."}` from Dashboard WebSocket
+- 🆕 **Add Result Aggregator:** Listen for `{"result_from": "...", "data": "..."}` from service TCP connections
+- 🆕 **Integrate RMI Client:** When command_for = "RMI_SERVICE", call Member 5's RMI client code
+- **UI Demo:** Service Registry tab shows real-time service join/leave (proves concurrency)
+
+**Member 2 (Dashboard + API Gateway):**
+
+- 🆕 **Build 5-Tab Dashboard:** One tab for each member's demonstration
+- 🆕 **Implement Command Sending:** Buttons send commands to Hub via WebSocket
+- 🆕 **Implement Result Display:** Handle results and display in appropriate tabs
+- 🆕 **Build API Gateway Service:** Command listener + HttpURLConnection implementation
+- **UI Demo:** API Gateway tab with "Fetch Weather" button (proves HttpURLConnection)
+
+**Member 3 (Secure File Service):**
+
+- ✅ Existing: SSLServerSocket file service
+- 🆕 **Add Command Listener:** Listen for "run-test" command from Hub
+- 🆕 **Implement Automated Test Clients:** Run 2 tests (insecure Socket fails, secure SSLSocket succeeds)
+- 🆕 **Send Results to Hub:** Both test outcomes sent back for Dashboard display
+- **UI Demo:** Security Test tab shows 2 test results (proves SSLServerSocket rejects insecure connections)
+
+**Member 4 (NIO Log Service):**
+
+- ✅ Existing: NIO Selector-based logging, file writing
+- 🆕 **Add Log Forwarding:** When log received, ALSO forward to Hub (in addition to file write)
+- 🆕 **Format for Hub:** `{"result_from": "NIO_SERVICE", "data": "LOG: ..."}`
+- **UI Demo:** NIO Log Stream tab shows real-time logs from all services (proves NIO Selector handles concurrent streams)
+
+**Member 5 (RMI Task Service):**
+
+- 🆕 **Build RMI Server:** TaskService remote interface, implementation, registry binding
+- 🆕 **Build RMI Client:** Separate client that invokes remote methods
+- 🆕 **Integrate with Hub:** Work with Member 1 to call RMI client from Hub when command received
+- **UI Demo:** RMI Task Runner tab executes remote tasks (proves Java RMI remote method invocation)
+
+---
+
+## 5. IMPLEMENTATION PHASES & TIMELINE
 
 ### Phase 1: Hub Server Refactoring (Member 1)
 
@@ -687,46 +1187,74 @@
 - [ ] Create service registration protocol
 - [ ] Implement heartbeat monitor (ScheduledExecutorService)
 - [ ] Deploy heartbeat detection and timeout mechanism
+- [ ] **NEW: Implement Message Broker - Command Router**
+  - [ ] Parse incoming WebSocket commands from Dashboard
+  - [ ] Route commands to appropriate service TCP connections
+- [ ] **NEW: Implement Message Broker - Result Aggregator**
+  - [ ] Listen for results from service connections
+  - [ ] Broadcast results to all Dashboard clients
 - [ ] Enhance WebSocket broadcaster for service updates
 - [ ] Test with mock services
 - [ ] Complete logging output
 
-**Deliverable:** Working Hub server accepting service registrations
+**Deliverable:** Working Hub server with message broker capabilities
 
-### Phase 2: API Gateway Service (Member 2 - Part B)
+### Phase 2: React Dashboard Refactoring (Member 2 - Part A)
 
 **Duration:** 3-4 days  
-**Dependencies:** Hub server (Phase 1)
+**Dependencies:** Hub server (Phase 1) with message broker
+
+- [ ] **NEW: Create Multi-Tab Dashboard Layout**
+  - [ ] Tab 1: Service Registry (Member 1's demo)
+  - [ ] Tab 2: API Gateway (Member 2's demo)
+  - [ ] Tab 3: Security Test (Member 3's demo)
+  - [ ] Tab 4: NIO Log Stream (Member 4's demo)
+  - [ ] Tab 5: RMI Task Runner (Member 5's demo)
+- [ ] **Implement Tab 1: Service Registry Component**
+- [ ] **Implement Tab 2: API Gateway Component**
+  - [ ] Button to fetch weather
+  - [ ] Display area for results
+  - [ ] Send commands to Hub
+- [ ] **Implement Tab 3: Security Test Component**
+  - [ ] Button to run security test
+  - [ ] Display area for test results (2 outcomes)
+- [ ] **Implement Tab 4: NIO Log Stream Component**
+  - [ ] Auto-scrolling log text area
+  - [ ] Real-time log appending
+- [ ] **Implement Tab 5: RMI Task Runner Component**
+  - [ ] Task dropdown selector
+  - [ ] Execute button
+  - [ ] Display area for task results
+- [ ] Update WebSocket message handlers for commands and results
+- [ ] Connect to Hub for service updates
+- [ ] Style dashboard UI
+- [ ] Test real-time updates for all tabs
+
+**Deliverable:** Working multi-tab dashboard with all 5 demo interfaces
+
+### Phase 3: API Gateway Service (Member 2 - Part B)
+
+**Duration:** 3-4 days  
+**Dependencies:** Hub server (Phase 1), Dashboard (Phase 2)
 
 - [ ] Create API Gateway service module
 - [ ] Implement HubClient to register with Hub
 - [ ] Implement heartbeat mechanism
-- [ ] Implement HttpURLConnection to external API
-- [ ] Create WebSocket endpoint for React commands
+- [ ] **Implement Command Listener for Hub communication**
+- [ ] **Implement HttpURLConnection to external API (CORE CONCEPT)**
+- [ ] **Parse commands and send results back to Hub**
 - [ ] Test HTTP calls to external API
+- [ ] Test end-to-end: Dashboard → Hub → Service → Hub → Dashboard
 - [ ] Integrate with Log Service (once ready)
 
-**Deliverable:** API Gateway service fetching real-world data
+**Deliverable:** API Gateway service with UI integration
 
-### Phase 3: React Dashboard Refactoring (Member 2 - Part A)
+### Phase 4: Secure File Service (Member 3) ✅ COMPLETE + UI INTEGRATION NEEDED
 
-**Duration:** 2-3 days  
-**Dependencies:** Hub server (Phase 1)
+**Duration:** 1 day (Core completed: November 11, 2025) + 1 day UI integration  
+**Dependencies:** Hub server ✅, Dashboard ✅
 
-- [ ] Refactor Chat components to Service components
-- [ ] Update WebSocket message handlers
-- [ ] Create service registry display UI
-- [ ] Add external API fetcher component
-- [ ] Connect to Hub for service updates
-- [ ] Style dashboard UI
-- [ ] Test real-time updates
-
-**Deliverable:** Working dashboard displaying services
-
-### Phase 4: Secure File Service (Member 3) ✅ COMPLETE
-
-**Duration:** 1 day (Completed: November 11, 2025)  
-**Dependencies:** Hub server ✅
+**Completed:**
 
 - [x] Create service module structure
 - [x] Generate self-signed certificate and KeyStore
@@ -737,61 +1265,114 @@
 - [x] Implement HubClient registration
 - [x] Integrate logging
 
-**Deliverable:** ✅ Secure file storage and retrieval over SSL - COMPLETE  
-**Documentation:** See `PHASE_4_COMPLETE.md`
+**NEW - UI Integration (To Do):**
+
+- [ ] **Implement Command Listener for Hub communication**
+- [ ] **Implement automated security test (2 test clients)**
+  - [ ] Test Client 1: Insecure Socket (should fail)
+  - [ ] Test Client 2: Secure SSLSocket (should succeed)
+- [ ] **Send test results back to Hub**
+- [ ] **Test end-to-end: Dashboard → Hub → Security Test → Results**
+
+**Deliverable:** ✅ Secure file storage over SSL + UI-integrated security demonstration  
+**Documentation:** See `PHASE_4_COMPLETE.md` + UI integration docs
 
 ### Phase 5: NIO Log Service (Member 4)
 
 **Duration:** 4-5 days  
-**Dependencies:** Hub server (Phase 1)
+**Dependencies:** Hub server (Phase 1), Dashboard (Phase 2)
 
 - [ ] Create service module structure
-- [ ] Implement ServerSocketChannel + Selector
-- [ ] Create non-blocking event loop
+- [ ] **Implement ServerSocketChannel + Selector (CORE CONCEPT)**
+- [ ] **Create non-blocking event loop with selector.select()**
 - [ ] Implement HubClient registration
 - [ ] Create log file writer
+- [ ] **NEW: Implement log forwarding to Hub for Dashboard display**
+  - [ ] When log received, write to file AND forward to Hub
+  - [ ] Format: `{"result_from": "NIO_SERVICE", "data": "LOG: ..."}`
 - [ ] Test with multiple concurrent connections
 - [ ] Integrate with all other services
+- [ ] **Test end-to-end: Services → NIO → Hub → Dashboard log tab**
 
-**Deliverable:** High-performance logging service
+**Deliverable:** High-performance logging service with real-time UI display
 
 ### Phase 6: RMI Task Service (Member 5)
 
 **Duration:** 3-4 days  
-**Dependencies:** Hub server, Log Service
+**Dependencies:** Hub server, Dashboard, Log Service
 
 - [ ] Create service module structure
-- [ ] Define TaskService remote interface
-- [ ] Implement TaskServiceImpl
-- [ ] Start RMI registry and bind service
-- [ ] Create RMI client
+- [ ] **Define TaskService remote interface (extends Remote)**
+- [ ] **Implement TaskServiceImpl (extends UnicastRemoteObject)**
+- [ ] **Start RMI registry and bind service (CORE CONCEPT)**
+- [ ] **Create RMI client**
+- [ ] **Integrate RMI client with Hub (Member 1 helps)**
+  - [ ] Hub calls RMI client when command received
+  - [ ] RMI client invokes remote methods on RMI server
+  - [ ] Results sent back through Hub to Dashboard
 - [ ] Implement HubClient registration
 - [ ] Test remote method invocation
+- [ ] **Test end-to-end: Dashboard → Hub → RMI Client → RMI Server → Results**
 - [ ] Integrate logging
 
-**Deliverable:** Working RMI service with remote method calls
+**Deliverable:** Working RMI service with UI-integrated task execution
 
 ### Phase 7: Integration & Testing (All Members)
 
 **Duration:** 2-3 days  
 **Dependencies:** All services (Phases 1-6)
 
-- [ ] Start Hub server
-- [ ] Start all microservices one by one
-- [ ] Verify all registrations on Hub
-- [ ] Verify React dashboard shows all services
-- [ ] Test API Gateway external API calls
-- [ ] Test Secure File Service upload/download
-- [ ] Verify all logs appear in Log Service
-- [ ] Test RMI client remote method invocation
-- [ ] Perform end-to-end integration testing
-- [ ] Prepare demo and documentation
+**System Startup Sequence:**
 
-**Deliverable:** Fully integrated system ready for presentation
+- [ ] Start Hub server (Member 1)
+- [ ] Start React Dashboard (Member 2)
+- [ ] Start all microservices (Members 2-5)
+- [ ] Verify all registrations on Hub
+
+**UI Testing - Each Tab:**
+
+- [ ] **Tab 1: Service Registry** (Member 1's demo)
+  - [ ] All services appear when started
+  - [ ] Services disappear when stopped/timeout
+  - [ ] Real-time updates work
+- [ ] **Tab 2: API Gateway** (Member 2's demo)
+  - [ ] Click "Fetch Weather" button
+  - [ ] Command routes through Hub correctly
+  - [ ] HttpURLConnection fetches real data
+  - [ ] Weather data displays on Dashboard
+- [ ] **Tab 3: Security Test** (Member 3's demo)
+  - [ ] Click "Run Security Test" button
+  - [ ] Two test results appear (FAILED and SUCCESS)
+  - [ ] Proves SSLServerSocket rejects insecure connections
+- [ ] **Tab 4: NIO Log Stream** (Member 4's demo)
+  - [ ] Real-time logs appear from all services
+  - [ ] Auto-scrolling works
+  - [ ] Proves NIO Selector handles concurrent connections
+- [ ] **Tab 5: RMI Task Runner** (Member 5's demo)
+  - [ ] Select task and click Execute
+  - [ ] Remote method invocation succeeds
+  - [ ] Task result displays on Dashboard
+
+**End-to-End Testing:**
+
+- [ ] All 5 tabs functional simultaneously
+- [ ] Message broker routes commands correctly
+- [ ] Results return through Hub to Dashboard
+- [ ] Concurrent operations work without blocking
+- [ ] System handles service failures gracefully
+
+**Demo Preparation:**
+
+- [ ] Create demo script for presentation
+- [ ] Record video walkthrough (backup)
+- [ ] Prepare documentation
+- [ ] Test on clean machine
+
+**Deliverable:** Fully integrated system with working UI demonstrations for all 5 members
 
 ---
 
-## 4. DIRECTORY STRUCTURE (After Implementation)
+## 6. DIRECTORY STRUCTURE (After Implementation)
 
 ```
 network programming - assignment/
@@ -868,7 +1449,7 @@ network programming - assignment/
 
 ---
 
-## 5. KEY IMPLEMENTATION GUIDELINES
+## 7. KEY IMPLEMENTATION GUIDELINES
 
 ### General Requirements for All Services
 
@@ -945,7 +1526,7 @@ network programming - assignment/
 
 ---
 
-## 6. TESTING STRATEGY
+## 8. TESTING STRATEGY
 
 ### Unit Testing
 
@@ -983,7 +1564,7 @@ network programming - assignment/
 
 ---
 
-## 7. DEPLOYMENT CHECKLIST
+## 9. DEPLOYMENT CHECKLIST
 
 Before presentation:
 
@@ -1000,7 +1581,7 @@ Before presentation:
 
 ---
 
-## 8. DOCUMENTATION TO CREATE
+## 10. DOCUMENTATION TO CREATE
 
 1. **START_SERVICES.md** - Step-by-step guide to start each service
 2. **API_DOCUMENTATION.md** - Protocol specification for service communication
@@ -1010,7 +1591,7 @@ Before presentation:
 
 ---
 
-## 9. MIGRATION FROM EXISTING CODE
+## 11. MIGRATION FROM EXISTING CODE
 
 ### What to Keep
 
@@ -1041,16 +1622,58 @@ Before presentation:
 
 ## SUMMARY
 
-This Distributed Services Hub architecture transforms a simple chat application into a production-like microservices demonstration system. Each member focuses on one key networking concept:
+This Distributed Services Hub architecture transforms a simple chat application into a production-like microservices demonstration system with **full UI integration for each member's work**.
 
-- **Member 1:** Multithreading & Concurrency (Hub)
-- **Member 2:** HttpURLConnection & WebSockets (API Gateway)
-- **Member 3:** JSSE & Secure Sockets (File Service)
-- **Member 4:** Java NIO & Selectors (Log Service)
-- **Member 5:** Java RMI (Task Service)
+### Core Architecture Innovation: Hub as Message Broker
 
-The system is **scalable, professional, and demonstrates real-world distributed computing patterns** suitable for both academic and portfolio purposes.
+Instead of CLI-only demonstrations, the Hub acts as a **central message broker** that routes commands from the React Dashboard to services and broadcasts results back. This ensures:
+
+✅ **Every member gets a dedicated UI tab** to showcase their networking concept  
+✅ **No CLI required** - Everything visible in the browser  
+✅ **Real networking concepts demonstrated** - Not just UI mockups  
+✅ **Clean architecture** - Dashboard only talks to Hub, Hub routes to services
+
+### Member Focus & UI Demonstrations
+
+| Member       | Core Concept                       | UI Demo              | What User Sees                                                 |
+| ------------ | ---------------------------------- | -------------------- | -------------------------------------------------------------- |
+| **Member 1** | Multithreading & Concurrency (Hub) | Service Registry Tab | Real-time service list updates, proves ConcurrentHashMap works |
+| **Member 2** | HttpURLConnection (API Gateway)    | API Gateway Tab      | "Fetch Weather" button shows external API call results         |
+| **Member 3** | JSSE & SSLServerSocket (Security)  | Security Test Tab    | 2 test results (insecure FAILS, secure SUCCEEDS)               |
+| **Member 4** | Java NIO & Selector (Logging)      | NIO Log Stream Tab   | Real-time scrolling logs from all services                     |
+| **Member 5** | Java RMI (Task Runner)             | RMI Task Runner Tab  | "Execute Task" button shows remote method results              |
+
+### Message Flow Example
+
+```
+User clicks "Fetch Weather" on Dashboard (Member 2's tab)
+    ↓
+Dashboard sends: {"command_for": "API_GATEWAY", "payload": "get-weather"}
+    ↓
+Hub routes command to API Gateway service (Member 1's routing logic)
+    ↓
+API Gateway uses HttpURLConnection to fetch weather (Member 2's core concept)
+    ↓
+API Gateway sends: {"result_from": "API_GATEWAY", "data": "{temp: 28.5, ...}"}
+    ↓
+Hub broadcasts result to all Dashboards (Member 1's broadcast logic)
+    ↓
+Dashboard displays weather data in API Gateway tab (Member 2's UI)
+```
+
+### Why This Approach is Superior
+
+❌ **Old Approach:** "Here's my CLI output, trust me it works"  
+✅ **New Approach:** "Click this button, see the real-time result on screen"
+
+The system is **scalable, professional, visually impressive, and demonstrates real-world distributed computing patterns** suitable for both academic presentations and portfolio projects.
 
 ---
 
-**Next Steps:** Share this plan with team members and begin Phase 1 implementation.
+**Next Steps:**
+
+1. Share this updated plan with all team members
+2. Member 2 starts Dashboard UI (5 tabs) immediately
+3. Member 1 adds message broker capabilities to Hub
+4. Members 3-5 add command listeners and result sending
+5. Integrate and test all UI demonstrations

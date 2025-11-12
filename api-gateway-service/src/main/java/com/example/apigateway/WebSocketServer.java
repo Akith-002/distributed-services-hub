@@ -2,9 +2,16 @@ package com.example.apigateway;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
+import com.example.apigateway.security.SSLClientUtils;
 import io.javalin.Javalin;
 import io.javalin.websocket.WsContext;
+import org.eclipse.jetty.server.AbstractConnector;
+import org.eclipse.jetty.server.Connector;
+import org.eclipse.jetty.server.Server;
 
+import javax.net.ssl.SSLSocket;
+import javax.net.ssl.SSLSocketFactory;
+import java.io.*;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArraySet;
@@ -101,6 +108,9 @@ public class WebSocketServer {
             
             ws.onError(ctx -> {
                 System.err.println("[WebSocket] Error: " + ctx.error());
+                if (ctx.error() != null) {
+                    ctx.error().printStackTrace();
+                }
             });
         });
     }
@@ -122,6 +132,18 @@ public class WebSocketServer {
                     
                 case "getservicestatus":
                     handleGetServiceStatusCommand(ctx);
+                    break;
+                    
+                case "uploadfile":
+                    handleUploadFileCommand(ctx, json);
+                    break;
+                    
+                case "listfiles":
+                    handleListFilesCommand(ctx);
+                    break;
+                    
+                case "downloadfile":
+                    handleDownloadFileCommand(ctx, json);
                     break;
                     
                 case "ping":
@@ -195,6 +217,200 @@ public class WebSocketServer {
         response.put("timestamp", System.currentTimeMillis());
         
         ctx.send(gson.toJson(response));
+    }
+    
+    /**
+     * Handle uploadFile command - proxy to Secure File Service
+     */
+    private void handleUploadFileCommand(WsContext ctx, JsonObject json) {
+        try {
+            String fileName = json.get("fileName").getAsString();
+            String fileData = json.get("fileData").getAsString();
+            
+            System.out.println("[ApiGateway] Uploading file: " + fileName + " (" + fileData.length() + " chars)");
+            
+            // Connect to Secure File Service via SSL
+            // Use custom SSL context that accepts self-signed certificates
+            SSLSocketFactory factory = SSLClientUtils.getSSLSocketFactory();
+            SSLSocket socket = (SSLSocket) factory.createSocket("localhost", 9090);
+            
+            // Enable TLS protocols
+            socket.setEnabledProtocols(new String[]{"TLSv1.2", "TLSv1.3"});
+            
+            PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
+            BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            
+            // Skip WELCOME message
+            String welcome = in.readLine();
+            System.out.println("[ApiGateway] Secure File Service: " + welcome);
+            
+            // Send STORE command with size - NO println, use write to control exact bytes
+            String storeCommand = "STORE::" + fileName + "::" + fileData.length();
+            out.println(storeCommand);
+            out.flush();
+            
+            // Send file data as raw bytes without adding newline
+            OutputStream rawOut = socket.getOutputStream();
+            rawOut.write(fileData.getBytes());
+            rawOut.write('\n');  // Single newline to signal end of data
+            rawOut.flush();
+            
+            // Read response
+            String response = in.readLine();
+            System.out.println("[ApiGateway] Upload response: " + response);
+            
+            socket.close();
+            
+            if (response != null && response.startsWith("SUCCESS::")) {
+                Map<String, Object> wsResponse = new LinkedHashMap<>();
+                wsResponse.put("type", "FILE_UPLOAD_SUCCESS");
+                wsResponse.put("fileName", fileName);
+                wsResponse.put("message", "✅ " + fileName + " uploaded successfully");
+                wsResponse.put("timestamp", System.currentTimeMillis());
+                ctx.send(gson.toJson(wsResponse));
+                System.out.println("[ApiGateway] ✓ File uploaded successfully: " + fileName);
+            } else {
+                String errorMsg = response != null ? response : "Unknown error";
+                ctx.send(createErrorResponse("Failed to upload file: " + errorMsg));
+            }
+            
+        } catch (Exception e) {
+            System.err.println("[ApiGateway] Error uploading file: " + e.getMessage());
+            e.printStackTrace();
+            ctx.send(createErrorResponse("Failed to upload file: " + e.getMessage()));
+        }
+    }
+    
+    /**
+     * Handle listFiles command - proxy to Secure File Service
+     */
+    private void handleListFilesCommand(WsContext ctx) {
+        try {
+            System.out.println("[ApiGateway] Listing files from Secure File Service");
+            
+            // Connect to Secure File Service via SSL
+            // Use custom SSL context that accepts self-signed certificates
+            SSLSocketFactory factory = SSLClientUtils.getSSLSocketFactory();
+            SSLSocket socket = (SSLSocket) factory.createSocket("localhost", 9090);
+            
+            // Enable TLS protocols
+            socket.setEnabledProtocols(new String[]{"TLSv1.2", "TLSv1.3"});
+            
+            PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
+            BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            
+            // Skip WELCOME message
+            String welcome = in.readLine();
+            System.out.println("[ApiGateway] Secure File Service: " + welcome);
+            
+            // Send LIST command
+            out.println("LIST");
+            
+            // Read response
+            String response = in.readLine();
+            System.out.println("[ApiGateway] List response: " + response);
+            
+            if (response != null && response.startsWith("SUCCESS::")) {
+                // Parse the file list
+                String fileListContent = response.substring(9); // Remove "SUCCESS::" prefix
+                
+                String[] files;
+                if (fileListContent.isEmpty() || fileListContent.equals("No files stored")) {
+                    files = new String[0];
+                } else {
+                    // Split by newline and extract just the filename (before the size info)
+                    String[] lines = fileListContent.split("\n");
+                    files = new String[lines.length];
+                    for (int i = 0; i < lines.length; i++) {
+                        // Extract filename from "filename (size bytes)" format
+                        String line = lines[i].trim();
+                        if (line.contains("(")) {
+                            files[i] = line.substring(0, line.lastIndexOf("(")).trim();
+                        } else {
+                            files[i] = line;
+                        }
+                    }
+                }
+                
+                socket.close();
+                
+                Map<String, Object> wsResponse = new LinkedHashMap<>();
+                wsResponse.put("type", "FILE_LIST");
+                wsResponse.put("files", files);
+                wsResponse.put("count", files.length);
+                wsResponse.put("timestamp", System.currentTimeMillis());
+                ctx.send(gson.toJson(wsResponse));
+                System.out.println("[ApiGateway] ✓ Listed " + files.length + " files");
+            } else {
+                socket.close();
+                ctx.send(createErrorResponse("Failed to list files: " + response));
+            }
+            
+        } catch (Exception e) {
+            System.err.println("[ApiGateway] Error listing files: " + e.getMessage());
+            e.printStackTrace();
+            ctx.send(createErrorResponse("Failed to list files: " + e.getMessage()));
+        }
+    }
+    
+    /**
+     * Handle downloadFile command - proxy to Secure File Service
+     */
+    private void handleDownloadFileCommand(WsContext ctx, JsonObject json) {
+        try {
+            String fileName = json.get("fileName").getAsString();
+            
+            System.out.println("[ApiGateway] Downloading file: " + fileName);
+            
+            // Connect to Secure File Service via SSL
+            // Use custom SSL context that accepts self-signed certificates
+            SSLSocketFactory factory = SSLClientUtils.getSSLSocketFactory();
+            SSLSocket socket = (SSLSocket) factory.createSocket("localhost", 9090);
+            
+            // Enable TLS protocols
+            socket.setEnabledProtocols(new String[]{"TLSv1.2", "TLSv1.3"});
+            
+            PrintWriter out = new PrintWriter(socket.getOutputStream(), true);
+            BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            
+            // Skip WELCOME message
+            String welcome = in.readLine();
+            System.out.println("[ApiGateway] Secure File Service: " + welcome);
+            
+            // Send RETRIEVE command
+            out.println("RETRIEVE::" + fileName);
+            
+            // Read response
+            String response = in.readLine();
+            System.out.println("[ApiGateway] Download response: " + response);
+            
+            if (response != null && response.startsWith("SUCCESS::")) {
+                // Read file data
+                StringBuilder fileData = new StringBuilder();
+                String line;
+                while ((line = in.readLine()) != null) {
+                    fileData.append(line).append("\n");
+                }
+                
+                socket.close();
+                
+                Map<String, Object> wsResponse = new LinkedHashMap<>();
+                wsResponse.put("type", "FILE_DOWNLOAD_SUCCESS");
+                wsResponse.put("fileName", fileName);
+                wsResponse.put("fileData", fileData.toString().trim());
+                wsResponse.put("timestamp", System.currentTimeMillis());
+                ctx.send(gson.toJson(wsResponse));
+                System.out.println("[ApiGateway] ✓ File downloaded successfully: " + fileName);
+            } else {
+                socket.close();
+                ctx.send(createErrorResponse("Failed to download file: " + response));
+            }
+            
+        } catch (Exception e) {
+            System.err.println("[ApiGateway] Error downloading file: " + e.getMessage());
+            e.printStackTrace();
+            ctx.send(createErrorResponse("Failed to download file: " + e.getMessage()));
+        }
     }
     
     /**
@@ -403,6 +619,37 @@ public class WebSocketServer {
         try {
             System.out.println("[WebSocketServer] Starting on port 9001...");
             app.start(9001);
+            
+            // Configure idle timeout after server starts (in a separate thread)
+            // This prevents "Connection Idle Timeout" errors on WebSocket connections
+            new Thread(() -> {
+                try {
+                    // Wait a moment for the server to fully initialize
+                    Thread.sleep(1000);
+                    
+                    // Access the underlying Jetty Server from Javalin's JettyServer wrapper
+                    var jettyServerWrapper = app.jettyServer();
+                    if (jettyServerWrapper != null) {
+                        Server jettyServer = jettyServerWrapper.server();
+                        
+                        if (jettyServer != null) {
+                            // Set idle timeout on all connectors
+                            for (Connector connector : jettyServer.getConnectors()) {
+                                if (connector instanceof AbstractConnector) {
+                                    AbstractConnector abstractConnector = (AbstractConnector) connector;
+                                    long currentTimeout = abstractConnector.getIdleTimeout();
+                                    abstractConnector.setIdleTimeout(300000); // 5 minutes (300 seconds)
+                                    System.out.println("[WebSocketServer] ✓ Jetty idle timeout configured");
+                                    System.out.println("[WebSocketServer]   Before: " + currentTimeout + "ms, After: 300000ms");
+                                }
+                            }
+                        }
+                    }
+                } catch (Exception e) {
+                    System.out.println("[WebSocketServer] Note: Could not configure idle timeout: " + e.getMessage());
+                }
+            }).start();
+            
             System.out.println("[WebSocketServer] ✓ WebSocket server started successfully");
             System.out.println("[WebSocketServer] Dashboard WebSocket: ws://localhost:9001/api");
             System.out.println("[WebSocketServer] Health endpoint: http://localhost:9001/health");
