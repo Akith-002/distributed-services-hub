@@ -90,12 +90,26 @@ public class ServiceRegistryHandler implements Runnable {
     /**
      * Process incoming message
      * Protocol: TYPE::ServiceName::Host::Port or TYPE::ServiceName
+     * Or JSON: {"result_from": "SERVICE_NAME", "data": "..."}
      */
     private void handleMessage(String message, PrintWriter writer) {
         if (message == null || message.trim().isEmpty()) {
             return;
         }
 
+        // Check if this is a JSON message (result from service)
+        if (message.trim().startsWith("{")) {
+            System.out.println("[HANDLER] Received JSON message from service: " + message);
+            boolean handled = resultAggregator.handleServiceResult(message);
+            if (handled) {
+                sendOk(writer, "Result received and broadcasted");
+            } else {
+                sendError(writer, "Failed to process result");
+            }
+            return;
+        }
+
+        // Otherwise, parse as protocol message (REGISTER, HEARTBEAT, etc.)
         String[] parts = message.split("::");
         if (parts.length < 2) {
             sendError(writer, "Invalid message format");

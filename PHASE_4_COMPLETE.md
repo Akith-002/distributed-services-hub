@@ -11,7 +11,8 @@
 
 **Objective:** Implement a Secure File Service using JSSE (Java Secure Socket Extension) with SSL/TLS encryption, demonstrating SSLServerSocket, KeyStore management, and secure file operations.
 
-**Core Technology Focus:** 
+**Core Technology Focus:**
+
 - JSSE (Java Secure Socket Extension)
 - SSLServerSocket & SSLSocket
 - Self-signed certificates & KeyStore
@@ -20,9 +21,71 @@
 
 ---
 
+## 🆕 PHASE 4 UI INTEGRATION (NOVEMBER 12, 2025)
+
+**Date:** November 12, 2025  
+**Enhancement:** Command Listening & Automated Security Testing  
+**Status:** ✅ **COMPLETE**
+
+### What's New
+
+The Secure File Service has been enhanced with UI integration capabilities:
+
+- ✅ **Command Listener Thread** - Listens for commands from Hub
+- ✅ **SecurityTestRunner** - Executes automated security tests on command
+- ✅ **Result Sending** - Sends test results back to Hub for Dashboard
+- ✅ **Automated Tests:**
+  - Test 1: Insecure Socket → FAILS (demonstrates SSLServerSocket enforces SSL)
+  - Test 2: Secure SSLSocket → SUCCEEDS (demonstrates proper SSL connection)
+
+### Files Added/Modified
+
+**New Files:**
+
+- `CommandListener.java` - Callback interface for commands
+- `SecurityTestRunner.java` - Automated test execution (250+ lines)
+- `PHASE_4_UI_INTEGRATION.md` - Complete UI integration documentation
+
+**Modified Files:**
+
+- `HubClient.java` - Added command listening thread & result sending
+- `SecureFileService.java` - Integrated SecurityTestRunner on startup
+- `pom.xml` - Fixed Maven Shade plugin configuration
+
+### Build Status
+
+- ✅ Maven build successful
+- ✅ All 8 classes compiled
+- ✅ JAR executable (~/3.5 MB)
+- ✅ All dependencies included
+
+### Deployment Status
+
+- ✅ Service starts successfully
+- ✅ Connects to Hub on port 7070
+- ✅ SSL server ready on port 9090
+- ✅ Heartbeat active (every 10s)
+- ✅ Command listener ready for "run-test" command
+- ✅ Both tests ready for execution
+
+### Dashboard Integration (Phase 7)
+
+When integrated with Dashboard, the "Security Test" tab will:
+
+1. Show a "Run Security Test" button
+2. Send "run-test" command to Hub
+3. Hub routes command to Secure File Service
+4. Service executes automated tests
+5. Results displayed:
+   - Test 1 (Insecure Socket): FAILED ❌
+   - Test 2 (Secure SSLSocket): SUCCESS ✅
+
+---
+
 ## ✅ COMPLETED DELIVERABLES
 
 ### 1. Project Structure ✅
+
 ```
 secure-file-service/
 ├── pom.xml                          # Maven configuration
@@ -51,6 +114,7 @@ secure-file-service/
 ```
 
 ### 2. SSL Certificate & Keystore ✅
+
 - **Type:** Self-signed certificate
 - **Algorithm:** RSA 2048-bit
 - **Signature:** SHA256withRSA
@@ -60,6 +124,7 @@ secure-file-service/
 - **Credentials:** password/password (for demo)
 
 **Generation Command:**
+
 ```powershell
 keytool -genkeypair -alias fileserver -keyalg RSA -keysize 2048 `
   -keystore keystore\fileservice.keystore -storepass password `
@@ -71,6 +136,7 @@ keytool -genkeypair -alias fileserver -keyalg RSA -keysize 2048 `
 ### 3. Java Implementation ✅
 
 #### A. SecureFileService.java (Main Entry)
+
 - **Lines of Code:** 162
 - **Key Features:**
   - Application startup orchestration
@@ -78,8 +144,9 @@ keytool -genkeypair -alias fileserver -keyalg RSA -keysize 2048 `
   - SSL server thread management
   - Graceful shutdown handling
   - Startup banner display
-  
+
 #### B. SSLFileServer.java (SSL Server)
+
 - **Lines of Code:** 85
 - **Key Features:**
   - SSLServerSocket creation using SSLUtils
@@ -89,12 +156,14 @@ keytool -genkeypair -alias fileserver -keyalg RSA -keysize 2048 `
   - Exception handling for SSL errors
 
 **Core SSL Implementation:**
+
 ```java
 SSLServerSocketFactory factory = SSLUtils.getServerSocketFactory();
 sslServerSocket = (SSLServerSocket) factory.createServerSocket(PORT);
 ```
 
 #### C. FileServiceHandler.java (Protocol Handler)
+
 - **Lines of Code:** 226
 - **Key Features:**
   - STORE command - Upload files securely
@@ -105,6 +174,7 @@ sslServerSocket = (SSLServerSocket) factory.createServerSocket(PORT);
   - Binary file transfer support
 
 **Protocol Format:**
+
 ```
 STORE::<filename>::<filesize>
 RETRIEVE::<filename>
@@ -114,6 +184,7 @@ EXIT
 ```
 
 #### D. HubClient.java (Service Registration)
+
 - **Lines of Code:** 118
 - **Key Features:**
   - TCP connection to Hub Server (port 7070)
@@ -123,12 +194,14 @@ EXIT
   - Thread-safe shutdown
 
 **Registration Protocol:**
+
 ```
 REGISTER::SecureFileService::localhost::9090
 HEARTBEAT::SecureFileService
 ```
 
 #### E. SSLFileClient.java (Test Client)
+
 - **Lines of Code:** 179
 - **Key Features:**
   - SSL socket connection
@@ -138,6 +211,7 @@ HEARTBEAT::SecureFileService
   - SSL session information display
 
 #### F. security/SSLUtils.java (SSL Utilities)
+
 - **Lines of Code:** 122
 - **Key Features:**
   - SSLContext creation
@@ -147,19 +221,24 @@ HEARTBEAT::SecureFileService
   - SSL session information printing
 
 ### 4. Maven Configuration ✅
+
 **Dependencies:**
+
 - Gson 2.10.1 (JSON serialization)
 - SLF4J Simple 2.0.9 (Logging)
 - SLF4J API 2.0.9 (Logging API)
 
 **Build Plugin:**
+
 - Maven Shade Plugin 3.5.1 (Uber JAR creation)
 
 **Compiler:**
+
 - Source/Target: Java 17
 - Encoding: UTF-8
 
 ### 5. Build Success ✅
+
 ```
 [INFO] Building Distributed Services Hub - Secure File Service 1.0-SNAPSHOT
 [INFO] Compiling 6 source files with javac [debug target 17] to target\classes
@@ -176,6 +255,7 @@ HEARTBEAT::SecureFileService
 ## 🧪 TESTING & VERIFICATION
 
 ### ✅ 1. Service Startup Test
+
 **Status:** PASSED ✅
 
 ```
@@ -193,6 +273,7 @@ HEARTBEAT::SecureFileService
 ```
 
 ### ✅ 2. Port Listening Test
+
 **Status:** PASSED ✅
 
 ```powershell
@@ -203,9 +284,11 @@ TCP    [::]:9090              [::]:0                 LISTENING       10132
 ```
 
 ### ✅ 3. Hub Registration Test
+
 **Status:** PASSED ✅
 
 **Hub Status Endpoint:**
+
 ```json
 {
   "server": "Distributed Services Hub",
@@ -222,6 +305,7 @@ TCP    [::]:9090              [::]:0                 LISTENING       10132
 ```
 
 **Services Registered:**
+
 ```json
 {
   "services": [
@@ -244,6 +328,7 @@ TCP    [::]:9090              [::]:0                 LISTENING       10132
 ```
 
 ### ✅ 4. SSL Configuration Test
+
 **Status:** PASSED ✅
 
 - SSL Context created successfully
@@ -259,30 +344,35 @@ TCP    [::]:9090              [::]:0                 LISTENING       10132
 ### JSSE Concepts Mastered:
 
 #### 1. KeyStore Management ✅
+
 - Generated self-signed certificates using `keytool`
 - Loaded KeyStore in Java application
 - Managed KeyStore passwords securely
 - Understood JKS vs PKCS12 formats
 
 #### 2. SSLContext Creation ✅
+
 - Initialized KeyManagerFactory
 - Configured SSL protocols (TLS 1.2/1.3)
 - Created SSLContext with proper managers
 - Handled SSL exceptions
 
 #### 3. SSLServerSocket Usage ✅
+
 - Created SSLServerSocket from SSLServerSocketFactory
 - Configured server-side SSL
 - Automatic SSL handshake handling
 - Multi-threaded SSL connections
 
 #### 4. SSLSocket & TrustManager ✅
+
 - Created SSL client sockets
 - Configured TrustManager for client
 - Printed SSL session information
 - Verified cipher suites
 
 #### 5. Secure File Operations ✅
+
 - Encrypted file transfer over SSL
 - Binary file handling
 - Directory traversal protection
@@ -293,18 +383,21 @@ TCP    [::]:9090              [::]:0                 LISTENING       10132
 ## 🔐 SECURITY FEATURES IMPLEMENTED
 
 ### 1. Transport Layer Security
+
 - ✅ TLS 1.2/1.3 encryption
 - ✅ SSL handshake authentication
 - ✅ Encrypted data transmission
 - ✅ Certificate-based trust
 
 ### 2. File Security
+
 - ✅ All file transfers encrypted
 - ✅ Path validation (no directory traversal)
 - ✅ Secure file storage in `files/` directory
 - ✅ Controlled file access
 
 ### 3. Service Security
+
 - ✅ Registration with Hub Server
 - ✅ Heartbeat monitoring
 - ✅ Graceful shutdown handling
@@ -314,15 +407,15 @@ TCP    [::]:9090              [::]:0                 LISTENING       10132
 
 ## 📊 CODE METRICS
 
-| Component | Lines of Code | Complexity | Status |
-|-----------|---------------|------------|---------|
-| SecureFileService.java | 162 | Low | ✅ Complete |
-| SSLFileServer.java | 85 | Low | ✅ Complete |
-| FileServiceHandler.java | 226 | Medium | ✅ Complete |
-| HubClient.java | 118 | Medium | ✅ Complete |
-| SSLFileClient.java | 179 | Medium | ✅ Complete |
-| SSLUtils.java | 122 | Low | ✅ Complete |
-| **Total** | **892** | - | ✅ **100%** |
+| Component               | Lines of Code | Complexity | Status      |
+| ----------------------- | ------------- | ---------- | ----------- |
+| SecureFileService.java  | 162           | Low        | ✅ Complete |
+| SSLFileServer.java      | 85            | Low        | ✅ Complete |
+| FileServiceHandler.java | 226           | Medium     | ✅ Complete |
+| HubClient.java          | 118           | Medium     | ✅ Complete |
+| SSLFileClient.java      | 179           | Medium     | ✅ Complete |
+| SSLUtils.java           | 122           | Low        | ✅ Complete |
+| **Total**               | **892**       | -          | ✅ **100%** |
 
 **Build Time:** 5.2 seconds  
 **JAR Size:** 3.2 MB (includes dependencies)  
@@ -332,19 +425,19 @@ TCP    [::]:9090              [::]:0                 LISTENING       10132
 
 ## 🎯 PHASE 4 CHECKLIST
 
-| Task | Status | Notes |
-|------|--------|-------|
-| Create service module structure | ✅ | 6 Java files, organized packages |
-| Generate self-signed certificate and KeyStore | ✅ | RSA 2048-bit, SHA256withRSA |
-| Implement SSLServerSocket server | ✅ | Port 9090, TLS 1.2/1.3 |
-| Create FileServiceHandler for protocols | ✅ | STORE, RETRIEVE, LIST, DELETE |
-| Implement file storage logic | ✅ | Binary file support, secure storage |
-| Create test SSL client | ✅ | Interactive CLI, SSL verification |
-| Implement HubClient registration | ✅ | Auto-registration, heartbeat |
-| Integrate logging | ✅ | SLF4J Simple Logger |
-| Build and package | ✅ | Maven Shade, executable JAR |
-| Test and verify | ✅ | All tests passed |
-| Documentation | ✅ | README, QUICK_START guides |
+| Task                                          | Status | Notes                               |
+| --------------------------------------------- | ------ | ----------------------------------- |
+| Create service module structure               | ✅     | 6 Java files, organized packages    |
+| Generate self-signed certificate and KeyStore | ✅     | RSA 2048-bit, SHA256withRSA         |
+| Implement SSLServerSocket server              | ✅     | Port 9090, TLS 1.2/1.3              |
+| Create FileServiceHandler for protocols       | ✅     | STORE, RETRIEVE, LIST, DELETE       |
+| Implement file storage logic                  | ✅     | Binary file support, secure storage |
+| Create test SSL client                        | ✅     | Interactive CLI, SSL verification   |
+| Implement HubClient registration              | ✅     | Auto-registration, heartbeat        |
+| Integrate logging                             | ✅     | SLF4J Simple Logger                 |
+| Build and package                             | ✅     | Maven Shade, executable JAR         |
+| Test and verify                               | ✅     | All tests passed                    |
+| Documentation                                 | ✅     | README, QUICK_START guides          |
 
 **Completion:** 11/11 tasks (100%) ✅
 
@@ -353,6 +446,7 @@ TCP    [::]:9090              [::]:0                 LISTENING       10132
 ## 📁 FILE DELIVERABLES
 
 ### Source Files (6):
+
 1. ✅ SecureFileService.java
 2. ✅ SSLFileServer.java
 3. ✅ FileServiceHandler.java
@@ -361,20 +455,24 @@ TCP    [::]:9090              [::]:0                 LISTENING       10132
 6. ✅ security/SSLUtils.java
 
 ### Configuration Files (3):
+
 1. ✅ pom.xml
 2. ✅ keystore/fileservice.keystore
 3. ✅ .vscode/settings.json
 
 ### Build Files (2):
+
 1. ✅ build.ps1
 2. ✅ generate-keystore.ps1
 
 ### Documentation Files (3):
+
 1. ✅ README.md (9.3 KB)
 2. ✅ QUICK_START.md
 3. ✅ PHASE_4_COMPLETE.md (this file)
 
 ### Binary Files (1):
+
 1. ✅ target/secure-file-service-1.0-SNAPSHOT.jar (3.2 MB)
 
 **Total Deliverables:** 15 files ✅
@@ -384,22 +482,26 @@ TCP    [::]:9090              [::]:0                 LISTENING       10132
 ## 🚀 HOW TO RUN
 
 ### Prerequisites:
+
 - Java 17 or higher
 - Maven 3.9.9
 - Hub Server running on ports 7070/7071
 
 ### Build:
+
 ```powershell
 cd secure-file-service
 mvn clean package
 ```
 
 ### Start Service:
+
 ```powershell
 java -jar target\secure-file-service-1.0-SNAPSHOT.jar
 ```
 
 ### Expected Output:
+
 ```
 ==============================================================================
   SECURE FILE SERVICE - MEMBER 3
@@ -423,6 +525,7 @@ java -jar target\secure-file-service-1.0-SNAPSHOT.jar
 ```
 
 ### Verify Registration:
+
 ```powershell
 Invoke-WebRequest -Uri "http://localhost:7071/services" | ConvertFrom-Json
 ```
@@ -434,25 +537,30 @@ Invoke-WebRequest -Uri "http://localhost:7071/services" | ConvertFrom-Json
 ### For Presentation/Demo:
 
 1. **Show Keystore Generation**
+
    - Self-signed certificate creation
    - Certificate details (RSA, SHA256)
    - Keystore file location
 
 2. **Show Service Startup**
+
    - SSL initialization logs
    - Hub registration success
    - SSL server ready message
 
 3. **Show Hub Integration**
+
    - Service appears in Hub's service registry
    - Status: "online"
    - Heartbeat monitoring active
 
 4. **Show Port Listening**
+
    - netstat shows port 9090 listening
    - Process ID confirmation
 
 5. **Show SSL vs Regular Socket**
+
    - SSLSocket: Connection successful ✅
    - Regular Socket: Connection rejected ❌
 
@@ -467,6 +575,7 @@ Invoke-WebRequest -Uri "http://localhost:7071/services" | ConvertFrom-Json
 ## 📈 INTEGRATION STATUS
 
 ### With Hub Server (Phase 1):
+
 - ✅ Registered as "SecureFileService"
 - ✅ Heartbeat every 10 seconds
 - ✅ Visible on service registry
@@ -474,23 +583,27 @@ Invoke-WebRequest -Uri "http://localhost:7071/services" | ConvertFrom-Json
 - ✅ Uptime tracking
 
 ### With API Gateway (Phase 2):
+
 - ⏳ Pending (future integration)
 - Could expose file service via HTTP gateway
 - Could provide file upload/download API
 
 ### With React Dashboard (Phase 3):
+
 - ⏳ Pending (future integration)
 - Will show service status
 - Will display heartbeat
 - Will show file statistics
 
 ### With NIO Log Service (Phase 5):
+
 - ⏳ Not yet implemented
 - Could log all file operations
 - Could log SSL handshakes
 - Could track file transfers
 
 ### With RMI Task Service (Phase 6):
+
 - ⏳ Not yet implemented
 - Could trigger remote file operations
 - Could schedule file cleanup tasks
@@ -500,11 +613,13 @@ Invoke-WebRequest -Uri "http://localhost:7071/services" | ConvertFrom-Json
 ## 🐛 ISSUES RESOLVED
 
 ### Issue 1: Package Declaration Error
+
 **Problem:** Files had `package main.java.com.example.fileservice;` instead of `package com.example.fileservice;`
 
 **Solution:** Fixed all package declarations to remove `main.java.` prefix
 
 **Files Fixed:**
+
 - SecureFileService.java
 - SSLFileServer.java
 - SSLFileClient.java
@@ -514,9 +629,11 @@ Invoke-WebRequest -Uri "http://localhost:7071/services" | ConvertFrom-Json
 **Result:** Build successful, all classes compiled ✅
 
 ### Issue 2: Non-Project File Warnings
+
 **Problem:** VS Code showing "non-project file, only syntax errors are reported"
 
-**Solution:** 
+**Solution:**
+
 - Created `.vscode/settings.json` with Java configuration
 - Warnings are cosmetic, Maven build works fine
 - Recommended: Restart VS Code or clean Java workspace
@@ -528,6 +645,7 @@ Invoke-WebRequest -Uri "http://localhost:7071/services" | ConvertFrom-Json
 ## 📚 DOCUMENTATION
 
 ### README.md Content:
+
 - Complete architecture overview
 - Quick start guide
 - SSL/TLS implementation details
@@ -537,6 +655,7 @@ Invoke-WebRequest -Uri "http://localhost:7071/services" | ConvertFrom-Json
 - Troubleshooting guide
 
 ### QUICK_START.md Content:
+
 - Step-by-step startup guide
 - Testing commands
 - Project structure overview
@@ -548,6 +667,7 @@ Invoke-WebRequest -Uri "http://localhost:7071/services" | ConvertFrom-Json
 ## 🎉 SUCCESS CRITERIA MET
 
 ✅ **Technical Requirements:**
+
 - JSSE implementation complete
 - SSLServerSocket working
 - Self-signed certificates generated
@@ -556,6 +676,7 @@ Invoke-WebRequest -Uri "http://localhost:7071/services" | ConvertFrom-Json
 - Heartbeat monitoring active
 
 ✅ **Code Quality:**
+
 - Clean architecture
 - Modular design
 - Exception handling
@@ -563,6 +684,7 @@ Invoke-WebRequest -Uri "http://localhost:7071/services" | ConvertFrom-Json
 - Documentation complete
 
 ✅ **Testing:**
+
 - Service starts successfully
 - SSL server listening
 - Hub registration verified
@@ -570,6 +692,7 @@ Invoke-WebRequest -Uri "http://localhost:7071/services" | ConvertFrom-Json
 - Build reproducible
 
 ✅ **Documentation:**
+
 - README comprehensive
 - Quick start guide clear
 - Code comments detailed
@@ -579,25 +702,27 @@ Invoke-WebRequest -Uri "http://localhost:7071/services" | ConvertFrom-Json
 
 ## 📊 FINAL STATUS
 
-| Category | Score | Status |
-|----------|-------|--------|
-| Code Completion | 100% | ✅ Complete |
-| Build Success | 100% | ✅ Successful |
-| Testing | 100% | ✅ All Passed |
-| Documentation | 100% | ✅ Comprehensive |
-| Integration | 66% | ✅ Hub Server integrated |
-| **Overall** | **93%** | ✅ **EXCELLENT** |
+| Category        | Score   | Status                   |
+| --------------- | ------- | ------------------------ |
+| Code Completion | 100%    | ✅ Complete              |
+| Build Success   | 100%    | ✅ Successful            |
+| Testing         | 100%    | ✅ All Passed            |
+| Documentation   | 100%    | ✅ Comprehensive         |
+| Integration     | 66%     | ✅ Hub Server integrated |
+| **Overall**     | **93%** | ✅ **EXCELLENT**         |
 
 ---
 
 ## 🎯 NEXT STEPS
 
 ### Immediate (Phase 4 Complete):
+
 - ✅ Service running and operational
 - ✅ Ready for integration testing
 - ✅ Documentation complete
 
 ### Future (Phase 7 - Integration):
+
 - Test SSL client file operations
 - Integrate with React Dashboard
 - Add logging via NIO Log Service
@@ -615,12 +740,14 @@ Invoke-WebRequest -Uri "http://localhost:7071/services" | ConvertFrom-Json
 **Lines Written:** 892 lines of Java code  
 **Time Invested:** ~8 hours (planning, coding, testing, documentation)  
 **Challenges Overcome:**
+
 - SSL certificate generation
 - Package structure issues
 - Maven configuration
 - SSL handshake debugging
 
 **Skills Demonstrated:**
+
 - Java network programming
 - SSL/TLS protocols
 - Certificate management
@@ -634,15 +761,18 @@ Invoke-WebRequest -Uri "http://localhost:7071/services" | ConvertFrom-Json
 ## 📞 SUPPORT & RESOURCES
 
 ### Documentation:
+
 - `README.md` - Complete reference
 - `QUICK_START.md` - Getting started
 - `PHASE_4_COMPLETE.md` - This file
 
 ### Code:
+
 - `src/main/java/` - Source code
 - `target/` - Compiled classes & JAR
 
 ### Resources:
+
 - [Oracle JSSE Documentation](https://docs.oracle.com/javase/8/docs/technotes/guides/security/jsse/JSSERefGuide.html)
 - [Keytool Documentation](https://docs.oracle.com/javase/8/docs/technotes/tools/unix/keytool.html)
 - [Maven Shade Plugin](https://maven.apache.org/plugins/maven-shade-plugin/)
@@ -661,6 +791,6 @@ All deliverables met, all tests passed, service operational and registered with 
 
 ---
 
-*Document generated: November 11, 2025*  
-*Phase 4 Implementation: Complete*  
-*Next Phase: Phase 5 - NIO Log Service (Member 4)*
+_Document generated: November 11, 2025_  
+_Phase 4 Implementation: Complete_  
+_Next Phase: Phase 5 - NIO Log Service (Member 4)_

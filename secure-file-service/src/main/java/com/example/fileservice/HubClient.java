@@ -12,7 +12,7 @@ public class HubClient {
     
     private static final String HUB_HOST = "localhost";
     private static final int HUB_PORT = 7070;
-    private static final String SERVICE_NAME = "SecureFileService";
+    private static final String SERVICE_NAME = "JSSE_SERVICE";
     private static final String SERVICE_HOST = "localhost";
     private static final int SERVICE_PORT = 9090;
     
@@ -20,7 +20,16 @@ public class HubClient {
     private PrintWriter out;
     private BufferedReader in;
     private Thread heartbeatThread;
+    private Thread commandListenerThread;
     private volatile boolean running = false;
+    private CommandListener commandListener;
+    
+    /**
+     * Set a command listener for incoming commands
+     */
+    public void setCommandListener(CommandListener listener) {
+        this.commandListener = listener;
+    }
     
     /**
      * Connect to Hub Server and register this service
@@ -46,8 +55,65 @@ public class HubClient {
             System.out.println("[HubClient] ✓ Service registered with Hub");
             running = true;
             startHeartbeat();
+            startCommandListener();  // Start listening for commands from Hub
         } else {
             System.err.println("[HubClient] ✗ Registration failed: " + response);
+        }
+    }
+    
+    /**
+     * Start command listener thread - listens for commands from Hub
+     */
+    private void startCommandListener() {
+        commandListenerThread = new Thread(() -> {
+            System.out.println("[HubClient] Command listener thread started");
+            
+            while (running) {
+                try {
+                    String message = in.readLine();
+                    if (message != null) {
+                        // Ignore responses (OK:: or ERROR::)
+                        if (message.startsWith("OK::") || message.startsWith("ERROR::")) {
+                            System.out.println("[HubClient] Received response from Hub: " + message);
+                            continue;
+                        }
+                        
+                        // Process actual commands
+                        System.out.println("[HubClient] Received command from Hub: " + message);
+                        
+                        // Notify listener if one is registered
+                        if (commandListener != null) {
+                            commandListener.onCommand(message);
+                        }
+                    } else {
+                        // Connection closed
+                        System.out.println("[HubClient] Hub connection closed");
+                        running = false;
+                        break;
+                    }
+                } catch (IOException e) {
+                    if (running) {
+                        System.err.println("[HubClient] Error reading command: " + e.getMessage());
+                    }
+                    break;
+                }
+            }
+            
+            System.out.println("[HubClient] Command listener thread stopped");
+        });
+        
+        commandListenerThread.setDaemon(true);
+        commandListenerThread.start();
+    }
+    
+    /**
+     * Send a result message back to the Hub
+     */
+    public void sendResult(String resultJson) {
+        if (out != null && running) {
+            out.println(resultJson);
+            out.flush();
+            System.out.println("[HubClient] Sent result to Hub: " + resultJson);
         }
     }
     
@@ -95,6 +161,10 @@ public class HubClient {
             
             if (heartbeatThread != null) {
                 heartbeatThread.interrupt();
+            }
+            
+            if (commandListenerThread != null) {
+                commandListenerThread.interrupt();
             }
             
             if (socket != null) {

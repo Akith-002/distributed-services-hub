@@ -16,6 +16,7 @@ public class SecureFileService {
     
     private static HubClient hubClient;
     private static SSLFileServer fileServer;
+    private static SecurityTestRunner testRunner;
     
     public static void main(String[] args) {
         printBanner();
@@ -33,8 +34,14 @@ public class SecureFileService {
             hubClient.connect();
             System.out.println("[STARTUP] ✓ Connected to Hub successfully\n");
             
-            // Step 2: Start SSL File Server
-            System.out.println("[STARTUP] Step 2: Starting SSL File Server...");
+            // Step 2: Create and register security test runner
+            System.out.println("[STARTUP] Step 2: Setting up Security Test Runner...");
+            testRunner = new SecurityTestRunner(hubClient);
+            hubClient.setCommandListener(testRunner);
+            System.out.println("[STARTUP] ✓ Security Test Runner ready\n");
+            
+            // Step 3: Start SSL File Server
+            System.out.println("[STARTUP] Step 3: Starting SSL File Server...");
             fileServer = new SSLFileServer();
             
             // Start server in new thread
