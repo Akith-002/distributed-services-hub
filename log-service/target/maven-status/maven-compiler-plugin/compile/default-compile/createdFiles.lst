@@ -1,0 +1,3 @@
+com\example\logservice\LogServer.class
+com\example\logservice\HubClient.class
+com\example\logservice\LogServiceClient.class

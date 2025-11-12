@@ -1,0 +1,6 @@
+[2025-11-11 23:09:06.899] [SERVER] === Log Service Starting ===
+[2025-11-11 23:09:06.928] [SERVER] Log Server started on port 9091
+[2025-11-11 23:09:06.939] [SERVER] Waiting for log messages from other services...
+[2025-11-11 23:09:06.939] [SERVER] Press Ctrl+C to stop the server
+[2025-11-11 23:09:06.956] [SERVER] Warning: Could not register with Hub Server: Failed to register with Hub Server at localhost:8000 - Connection refused: connect
+[2025-11-11 23:09:06.958] [SERVER] Continuing anyway - services can still connect directly
