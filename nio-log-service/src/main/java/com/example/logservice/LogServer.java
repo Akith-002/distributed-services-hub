@@ -54,44 +54,61 @@ public class LogServer implements Runnable {
     @Override
     public void run() {
         try {
+            System.out.println("[NIO_LOG_SERVICE] Event loop started");
+            
             // Single-threaded event loop with Selector
             while (running) {
-                // Block until at least one channel is ready
-                int readyChannels = selector.select(1000); // 1 second timeout
-                
-                if (readyChannels == 0) {
-                    continue; // No channels ready, loop again
-                }
-
-                // Get set of keys with events
-                Set<SelectionKey> selectedKeys = selector.selectedKeys();
-                Iterator<SelectionKey> keyIterator = selectedKeys.iterator();
-
-                while (keyIterator.hasNext()) {
-                    SelectionKey key = keyIterator.next();
-
-                    try {
-                        if (key.isAcceptable()) {
-                            handleAccept(key);
-                        } else if (key.isReadable()) {
-                            handleRead(key);
-                        }
-                    } catch (IOException e) {
-                        System.err.println("[NIO_LOG_SERVICE] Error handling key: " + e.getMessage());
-                        key.cancel();
-                        try {
-                            key.channel().close();
-                        } catch (IOException ex) {
-                            // Ignore
-                        }
+                try {
+                    // Block until at least one channel is ready
+                    int readyChannels = selector.select(1000); // 1 second timeout
+                    
+                    if (readyChannels == 0) {
+                        continue; // No channels ready, loop again
                     }
 
-                    keyIterator.remove(); // Remove processed key
+                    // Get set of keys with events
+                    Set<SelectionKey> selectedKeys = selector.selectedKeys();
+                    Iterator<SelectionKey> keyIterator = selectedKeys.iterator();
+
+                    while (keyIterator.hasNext()) {
+                        SelectionKey key = keyIterator.next();
+
+                        try {
+                            if (key.isAcceptable()) {
+                                handleAccept(key);
+                            } else if (key.isReadable()) {
+                                handleRead(key);
+                            }
+                        } catch (IOException e) {
+                            System.err.println("[NIO_LOG_SERVICE] Error handling key: " + e.getMessage());
+                            key.cancel();
+                            try {
+                                key.channel().close();
+                            } catch (IOException ex) {
+                                // Ignore
+                            }
+                        }
+
+                        keyIterator.remove(); // Remove processed key
+                    }
+                } catch (IOException e) {
+                    System.err.println("[NIO_LOG_SERVICE] Error in selector.select(): " + e.getMessage());
+                    e.printStackTrace();
+                    // Continue running unless explicitly stopped
+                } catch (Exception e) {
+                    System.err.println("[NIO_LOG_SERVICE] Unexpected error in event loop: " + e.getMessage());
+                    e.printStackTrace();
+                    // Continue running unless explicitly stopped
                 }
             }
-        } catch (IOException e) {
-            System.err.println("[NIO_LOG_SERVICE] Error in event loop: " + e.getMessage());
+            
+            System.out.println("[NIO_LOG_SERVICE] Event loop exited normally");
+            
+        } catch (Exception e) {
+            System.err.println("[NIO_LOG_SERVICE] Fatal error in event loop: " + e.getMessage());
             e.printStackTrace();
+        } finally {
+            System.out.println("[NIO_LOG_SERVICE] Event loop thread terminated");
         }
     }
 

@@ -1,0 +1,5 @@
+com\example\logservice\HubForwarder.class
+com\example\logservice\NioLogService.class
+com\example\logservice\LogServer.class
+com\example\logservice\HubClient.class
+com\example\logservice\LogWriter.class

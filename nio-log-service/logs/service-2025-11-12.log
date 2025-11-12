@@ -1,0 +1,12 @@
+[2025-11-12 12:10:58] SYSTEM: NIO Log Service started on port 9091
+[2025-11-12 12:11:36] SYSTEM: NIO Log Service started on port 9091
+[2025-11-12 12:12:54] SYSTEM: NIO Log Service started on port 9091
+[2025-11-12 12:15:32] SYSTEM: NIO Log Service started on port 9091
+[2025-11-12 12:17:03] SYSTEM: NIO Log Service started on port 9091
+[2025-11-12 12:18:34] SYSTEM: New client connected: /[0:0:0:0:0:0:0:1]:9213
+[2025-11-12 12:18:34] API_GATEWAY: Weather fetched for Colombo (28.5Â°C)
+[2025-11-12 12:18:35] SECURE_FILE_SERVICE: File test.txt stored (1024 bytes)
+[2025-11-12 12:18:35] HUB: Service 'API_GATEWAY' registered
+[2025-11-12 12:18:36] API_GATEWAY: HttpURLConnection successful
+[2025-11-12 12:18:36] SECURE_FILE_SERVICE: SSL handshake completed
+[2025-11-12 12:18:37] SYSTEM: Client disconnected: /[0:0:0:0:0:0:0:1]:9213
